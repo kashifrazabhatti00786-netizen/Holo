@@ -2,175 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JARVIS // Quantum Neural Hand Interface</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Particle Interface</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
-  
-  <!-- Google MediaPipe Dependencies -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-  
-  <!-- Three.js ES Module Import Map -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
       }
     }
   </script>
 </head>
 <body>
-  <!-- WebGL Render Canvas Container -->
-  <div id="canvas-container"></div>
+  <canvas id="webgl-canvas"></canvas>
 
-  <!-- Hidden Video Element for MediaPipe Webcam Capture -->
-  <video id="webcam" playsinline style="display: none;"></video>
-
-  <!-- Futuristic Visual Overlay Effects -->
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
-
-  <!-- Holographic Reticle Overlay -->
-  <div id="reticle" class="reticle">
-    <div class="reticle-outer-ring"></div>
-    <div class="reticle-inner-ring"></div>
-    <div class="reticle-center"></div>
-    <div class="reticle-bracket top-left"></div>
-    <div class="reticle-bracket top-right"></div>
-    <div class="reticle-bracket bottom-left"></div>
-    <div class="reticle-bracket bottom-right"></div>
-    <div class="reticle-label" id="reticle-label">TARGET [LOCK]</div>
-  </div>
-
-  <!-- Main Graphical User Interface -->
   <div id="hud-container">
-    <!-- Top System Header -->
-    <header class="hud-header hud-card">
-      <div class="brand">
-        <div class="core-symbol"></div>
-        <div>
-          <h1>J.A.R.V.I.S. <span class="version">MARK-85</span></h1>
-          <p class="subtitle">HOLOGRAPHIC QUANTUM GESTURE SYSTEM</p>
+    <div class="hud-panel">
+      <div class="hud-header">
+        <span class="hud-title">PARTICLE INTERFACE</span>
+        <span class="status-pulse"></span>
+      </div>
+      <div class="hud-body">
+        <div class="hud-row">
+          <span class="hud-label">Tracking</span>
+          <span class="hud-value" id="hud-tracking">Waiting...</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Status</span>
+          <span class="hud-value status-active" id="hud-status">Graphics Initialised</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">FPS</span>
+          <span class="hud-value" id="hud-fps">--</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Particles</span>
+          <span class="hud-value" id="hud-particles">80,000</span>
         </div>
       </div>
-      <div class="status-group">
-        <div class="status-indicator">
-          <span class="status-dot pulsing" id="status-dot"></span>
-          <span class="status-text" id="status-text">SYSTEM INITIALIZING...</span>
-        </div>
-        <div class="fps-container">
-          <span class="fps-value" id="fps-val">--</span>
-          <span class="fps-label">FPS</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Left Telemetry Panel -->
-    <aside class="hud-panel panel-left hud-card">
-      <div class="panel-header">
-        <span class="panel-title">SPATIAL TELEMETRY</span>
-        <span class="panel-tag">SYS.LOC.01</span>
-      </div>
-      <div class="telemetry-grid">
-        <div class="tele-item">
-          <span class="tele-label">POS X</span>
-          <span class="tele-val" id="val-x">+0.000</span>
-        </div>
-        <div class="tele-item">
-          <span class="tele-label">POS Y</span>
-          <span class="tele-val" id="val-y">+0.000</span>
-        </div>
-        <div class="tele-item">
-          <span class="tele-label">POS Z</span>
-          <span class="tele-val" id="val-z">+0.000</span>
-        </div>
-        <div class="tele-item">
-          <span class="tele-label">TRACK CONF</span>
-          <span class="tele-val highlight" id="val-conf">0%</span>
-        </div>
-      </div>
-      <div class="meter-group">
-        <div class="meter-header">
-          <span>NEURAL SIGNAL STRENGTH</span>
-          <span id="sig-perc">0%</span>
-        </div>
-        <div class="meter-bar-bg">
-          <div class="meter-bar-fill" id="sig-fill" style="width: 0%;"></div>
-        </div>
-      </div>
-      <div class="sub-info">
-        <div>PARTICLES: <span class="accent-text">3,500 CORES</span></div>
-        <div>FIELD DEPTH: <span class="accent-text">DYNAMIC FRUSTUM</span></div>
-      </div>
-    </aside>
-
-    <!-- Right Gesture & Core Status Panel -->
-    <aside class="hud-panel panel-right hud-card">
-      <div class="panel-header">
-        <span class="panel-title">CORE & GESTURE MONITOR</span>
-        <span class="panel-tag">ACT.GST.04</span>
-      </div>
-      <div class="gesture-display">
-        <div class="gesture-sub">ACTIVE GESTURE</div>
-        <div class="gesture-main" id="gesture-name">SEARCHING TARGET...</div>
-      </div>
-      <div class="telemetry-grid">
-        <div class="tele-item">
-          <span class="tele-label">PINCH RATIO</span>
-          <span class="tele-val" id="val-pinch">1.000</span>
-        </div>
-        <div class="tele-item">
-          <span class="tele-label">CORE SCALE</span>
-          <span class="tele-val" id="val-scale">1.000x</span>
-        </div>
-      </div>
-      <div class="meter-group">
-        <div class="meter-header">
-          <span>PLASMA CORE OUTPUT</span>
-          <span id="density-perc">100%</span>
-        </div>
-        <div class="meter-bar-bg">
-          <div class="meter-bar-fill glow-amber" id="density-fill" style="width: 100%;"></div>
-        </div>
-      </div>
-      <div class="implosion-banner" id="implosion-badge">
-        <span class="pulse-icon">⚡</span> IMPLOSION STATE: READY
-      </div>
-    </aside>
-
-    <!-- Bottom Controls & Hints Panel -->
-    <footer class="hud-footer hud-card">
-      <div class="hint-cell">
-        <span class="key-badge">OPEN PALM</span>
-        <span class="key-desc">POSITION ENERGY CORE</span>
-      </div>
-      <div class="hint-divider"></div>
-      <div class="hint-cell">
-        <span class="key-badge">PINCH</span>
-        <span class="key-desc">SCALE PLASMA SPHERE</span>
-      </div>
-      <div class="hint-divider"></div>
-      <div class="hint-cell">
-        <span class="key-badge">FIST</span>
-        <span class="key-desc">TRIGGER IMPLOSION BURST</span>
-      </div>
-    </footer>
+    </div>
   </div>
 
-  <!-- Camera Error Overlay / Fallback Modal -->
-  <div id="error-overlay" class="error-modal-overlay hidden">
-    <div class="error-card hud-card">
-      <div class="error-header">⚠️ WEBCAM ACCESS NOTICE</div>
-      <div class="error-body" id="error-msg">
-        Camera permission is disabled or unavailable. Fallback mouse/pointer control has been activated. Move your cursor to position the core, click and drag to simulate pinching, or double-click to simulate a fist implosion.
-      </div>
-      <button class="hud-btn" id="btn-retry">RETRY CAMERA ACCESS</button>
-    </div>
+  <div id="error-dialog" class="error-panel hidden">
+    <div class="error-title">GRAPHICS ERROR</div>
+    <div class="error-message" id="error-text">WebGL is not supported on this device or browser.</div>
   </div>
 
   <script type="module" src="app.js"></script>
 </body>
-  </html>
+</html>
