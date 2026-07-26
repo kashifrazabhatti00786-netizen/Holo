@@ -25,30 +25,26 @@ class PerformanceMonitor {
 }
 
 /**
- * MediaPipe Hand Tracking Manager
+ * MediaPipe Multi-Hand Tracker (Up to 2 hands)
  */
-class HandTracker {
-  constructor(onHandUpdate, onError) {
-    this.onHandUpdate = onHandUpdate;
+class MultiHandTracker {
+  constructor(onHandsUpdate, onError) {
+    this.onHandsUpdate = onHandsUpdate;
     this.onError = onError;
 
     this.trackingStatusEl = document.getElementById('hud-tracking');
+    this.handsCountEl = document.getElementById('hud-hands');
     this.gestureStatusEl = document.getElementById('hud-gesture');
+    this.modeStatusEl = document.getElementById('hud-mode');
     this.statusDot = document.getElementById('status-dot');
     this.videoElement = document.getElementById('webcam');
-
-    this.rawHandPos = new THREE.Vector3(0, 0, 0);
-    this.rawPointerPos = new THREE.Vector3(0, 0, 0);
-    this.currentGesture = 'None';
-    this.pinchRatio = 0.1;
-    this.isHandPresent = false;
 
     this.init();
   }
 
   async init() {
     if (!window.Hands || !window.Camera) {
-      this.updateHUD('Lib Error', 'None', false);
+      this.updateHUD('Lib Error', 0, 'None', 'Idle', false);
       if (this.onError) this.onError("MediaPipe tracking libraries failed to load.");
       return;
     }
@@ -59,7 +55,7 @@ class HandTracker {
       });
 
       this.hands.setOptions({
-        maxNumHands: 1,
+        maxNumHands: 2,
         modelComplexity: 1,
         minDetectionConfidence: 0.55,
         minTrackingConfidence: 0.55
@@ -78,66 +74,91 @@ class HandTracker {
         facingMode: 'user'
       });
 
-      this.updateHUD('Searching...', 'None', false);
+      this.updateHUD('Searching...', 0, 'None', 'Idle', false);
       await this.camera.start();
     } catch (err) {
       console.error("Camera access error:", err);
-      this.updateHUD('Permission Denied', 'None', false);
+      this.updateHUD('Permission Denied', 0, 'None', 'Idle', false);
       if (this.onError) this.onError("Camera access was denied or device webcam is unavailable.");
     }
   }
 
   handleResults(results) {
+    const parsedHands = [];
+    const viewWidth = 26.0;
+    const viewHeight = 16.0;
+
     if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-      const landmarks = results.multiHandLandmarks[0];
-      this.isHandPresent = true;
+      for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+        const landmarks = results.multiHandLandmarks[i];
 
-      // Calculate Palm Center 3D position
-      const wrist = landmarks[0];
-      const indexMcp = landmarks[5];
-      const pinkyMcp = landmarks[17];
+        // 3D Palm Center Calculation
+        const wrist = landmarks[0];
+        const indexMcp = landmarks[5];
+        const pinkyMcp = landmarks[17];
 
-      const palmX = (wrist.x + indexMcp.x + pinkyMcp.x) / 3.0;
-      const palmY = (wrist.y + indexMcp.y + pinkyMcp.y) / 3.0;
-      const palmZ = (wrist.z + indexMcp.z + pinkyMcp.z) / 3.0;
+        const palmX = (wrist.x + indexMcp.x + pinkyMcp.x) / 3.0;
+        const palmY = (wrist.y + indexMcp.y + pinkyMcp.y) / 3.0;
+        const palmZ = (wrist.z + indexMcp.z + pinkyMcp.z) / 3.0;
 
-      // Horizontally flipped normalized coordinates [-0.5, 0.5]
-      const normX = (1.0 - palmX) - 0.5;
-      const normY = 0.5 - palmY;
-      const normZ = -palmZ;
+        // Horizontally flipped normalized coordinates [-0.5, 0.5]
+        const normX = (1.0 - palmX) - 0.5;
+        const normY = 0.5 - palmY;
+        const normZ = -palmZ;
 
-      // View frustum scale mapping
-      const viewWidth = 26.0;
-      const viewHeight = 16.0;
+        const palmPos = new THREE.Vector3(normX * viewWidth, normY * viewHeight, normZ * 12.0);
 
-      this.rawHandPos.set(normX * viewWidth, normY * viewHeight, normZ * 12.0);
+        // Index Tip position
+        const indexTip = landmarks[8];
+        const idxX = (1.0 - indexTip.x) - 0.5;
+        const idxY = 0.5 - indexTip.y;
+        const idxZ = -indexTip.z;
+        const pointerPos = new THREE.Vector3(idxX * viewWidth, idxY * viewHeight, idxZ * 12.0);
 
-      // Index Tip position for pointing gesture
-      const indexTip = landmarks[8];
-      const idxX = (1.0 - indexTip.x) - 0.5;
-      const idxY = 0.5 - indexTip.y;
-      const idxZ = -indexTip.z;
-      this.rawPointerPos.set(idxX * viewWidth, idxY * viewHeight, idxZ * 12.0);
+        // Gesture Classification
+        const gestureInfo = this.classifyGesture(landmarks);
 
-      // Classify Gesture
-      const gestureData = this.classifyGesture(landmarks);
-      this.currentGesture = gestureData.name;
-      this.pinchRatio = gestureData.pinchRatio || 0.1;
-
-      this.updateHUD('Hand Detected', this.currentGesture, true);
-    } else {
-      this.isHandPresent = false;
-      this.currentGesture = 'None';
-      this.updateHUD('Lost', 'None', false);
+        parsedHands.push({
+          palmPos,
+          pointerPos,
+          gesture: gestureInfo.name,
+          pinchRatio: gestureInfo.pinchRatio || 0.1
+        });
+      }
     }
 
-    if (this.onHandUpdate) {
-      this.onHandUpdate({
-        isHandPresent: this.isHandPresent,
-        handPos: this.rawHandPos,
-        pointerPos: this.rawPointerPos,
-        gesture: this.currentGesture,
-        pinchRatio: this.pinchRatio
+    const numHands = parsedHands.length;
+    let modeText = 'Idle';
+    let gestureText = 'None';
+    let trackingText = 'Lost';
+
+    if (numHands === 1) {
+      trackingText = '1 Hand Detected';
+      gestureText = parsedHands[0].gesture;
+      modeText = 'One-Hand Hover';
+    } else if (numHands === 2) {
+      trackingText = '2 Hands Detected';
+      
+      const isBothGrabbing = (parsedHands[0].gesture === 'Closed Fist' || parsedHands[0].gesture === 'Pinch' || parsedHands[0].gesture === 'Open Hand') &&
+                             (parsedHands[1].gesture === 'Closed Fist' || parsedHands[1].gesture === 'Pinch' || parsedHands[1].gesture === 'Open Hand');
+      
+      if (isBothGrabbing) {
+        gestureText = 'Two-Hand Grab';
+        modeText = 'Two-Hand Holographic';
+      } else {
+        gestureText = `${parsedHands[0].gesture} / ${parsedHands[1].gesture}`;
+        modeText = 'Two-Hand Hover';
+      }
+    }
+
+    this.updateHUD(trackingText, numHands, gestureText, modeText, numHands > 0);
+
+    if (this.onHandsUpdate) {
+      this.onHandsUpdate({
+        numHands,
+        hands: parsedHands,
+        mode: modeText,
+        primaryGesture: gestureText
       });
     }
   }
@@ -158,13 +179,12 @@ class HandTracker {
     const dist3D = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
     const distWrist = (pt) => dist3D(pt, wrist);
 
-    // 1. Pinch Gesture: Thumb Tip to Index Tip
+    // Pinch Gesture
     const pinchDist = dist3D(thumbTip, indexTip);
     if (pinchDist < 0.058) {
       return { name: 'Pinch', pinchRatio: pinchDist };
     }
 
-    // Distances from Wrist
     const dIndexTip = distWrist(indexTip);
     const dMiddleTip = distWrist(middleTip);
     const dRingTip = distWrist(ringTip);
@@ -175,24 +195,23 @@ class HandTracker {
     const dRingMcp = distWrist(ringMcp);
     const dPinkyMcp = distWrist(pinkyMcp);
 
-    // Folded states
     const isIndexFolded = dIndexTip < dIndexMcp * 1.25;
     const isMiddleFolded = dMiddleTip < dMiddleMcp * 1.25;
     const isRingFolded = dRingTip < dRingMcp * 1.25;
     const isPinkyFolded = dPinkyTip < dPinkyMcp * 1.25;
 
-    // 2. Closed Fist: All 4 finger tips folded inward
+    // Closed Fist
     if (isIndexFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
       return { name: 'Closed Fist' };
     }
 
-    // 3. Pointing: Index extended, others folded
+    // Pointing
     const isIndexExtended = dIndexTip > dIndexMcp * 1.4;
     if (isIndexExtended && isMiddleFolded && isRingFolded && isPinkyFolded) {
       return { name: 'Pointing' };
     }
 
-    // 4. Open Hand: Most fingers extended
+    // Open Hand
     if (dIndexTip > dIndexMcp * 1.2 && dMiddleTip > dMiddleMcp * 1.2 && dRingTip > dRingMcp * 1.2) {
       return { name: 'Open Hand' };
     }
@@ -200,9 +219,11 @@ class HandTracker {
     return { name: 'Tracking' };
   }
 
-  updateHUD(trackingText, gestureText, isOk) {
+  updateHUD(trackingText, count, gestureText, modeText, isOk) {
     if (this.trackingStatusEl) this.trackingStatusEl.textContent = trackingText;
+    if (this.handsCountEl) this.handsCountEl.textContent = count;
     if (this.gestureStatusEl) this.gestureStatusEl.textContent = gestureText;
+    if (this.modeStatusEl) this.modeStatusEl.textContent = modeText;
 
     if (this.statusDot) {
       this.statusDot.classList.remove('tracking-ok', 'tracking-lost');
@@ -216,7 +237,7 @@ class HandTracker {
 }
 
 /**
- * Procedural Interactive Particle Universe System
+ * Procedural Dynamic Particle Universe
  */
 class ParticleUniverse {
   constructor(totalCount = 80000) {
@@ -233,7 +254,7 @@ class ParticleUniverse {
     const colorCoreMid = new THREE.Color(0xffaa00);   // Gold
     const colorCoreOuter = new THREE.Color(0xff4400); // Orange
     const colorAmbient = new THREE.Color(0xff8833);   // Amber
-    const colorAccent = new THREE.Color(0x33aaff);    // Cyan accent
+    const colorAccent = new THREE.Color(0x33aaff);    // Cyan
 
     const coreCount = Math.floor(this.count * 0.45);
     const spiralCount = Math.floor(this.count * 0.35);
@@ -274,7 +295,7 @@ class ParticleUniverse {
         size = Math.random() * 8.0 + 4.0;
         color = Math.random() > 0.85 ? colorAccent : colorCoreOuter;
       } else {
-        type = 2; // Ambient Outer Field
+        type = 2; // Ambient Outer Universe
         const radius = 12.0 + Math.random() * 32.0;
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
@@ -313,7 +334,10 @@ class ParticleUniverse {
         uHandActive: { value: 0.0 },
         uCollapse: { value: 0.0 },
         uPointerPos: { value: new THREE.Vector3(0, 0, 0) },
-        uPointerActive: { value: 0.0 }
+        uPointerActive: { value: 0.0 },
+        uStretchVec: { value: new THREE.Vector3(1, 0, 0) },
+        uStretchAmount: { value: 0.0 },
+        uGlowBoost: { value: 0.0 }
       },
       vertexShader: `
         uniform float uTime;
@@ -322,6 +346,8 @@ class ParticleUniverse {
         uniform float uCollapse;
         uniform vec3 uPointerPos;
         uniform float uPointerActive;
+        uniform vec3 uStretchVec;
+        uniform float uStretchAmount;
 
         attribute float aSize;
         attribute float aPhase;
@@ -334,7 +360,7 @@ class ParticleUniverse {
           vColor = color;
           vec3 pos = position;
 
-          // Base Animation
+          // Rotation & Pulsing
           if (aType < 0.5) {
             float angle = uTime * 0.15 + aPhase * 0.1;
             float c = cos(angle);
@@ -361,18 +387,24 @@ class ParticleUniverse {
             pos.z += sin(uTime * 0.15 + aPhase * 2.0) * 0.4;
           }
 
-          // Smooth Hand Follow Translation for Core/Spiral
+          // Elastic Holographic Stretching for Two-Hand Grab
+          if (aType < 1.5 && abs(uStretchAmount) > 0.001) {
+            float proj = dot(pos, uStretchVec);
+            pos += uStretchVec * proj * uStretchAmount * 0.35;
+          }
+
+          // One-Hand Follow Shift
           if (aType < 1.5) {
             pos += uHandPos * uHandActive;
           }
 
-          // Closed Fist Collapse Attraction
+          // Fist Collapse Attraction
           if (uCollapse > 0.001) {
             vec3 target = (aType < 1.5) ? uHandPos : vec3(0.0);
             pos = mix(pos, target, uCollapse * 0.88);
           }
 
-          // Pointing Gesture Nearest Cluster Highlight
+          // Pointing Cluster Highlight
           vHighlight = 0.0;
           if (uPointerActive > 0.5) {
             float distToPointer = length(pos - uPointerPos);
@@ -389,6 +421,7 @@ class ParticleUniverse {
         }
       `,
       fragmentShader: `
+        uniform float uGlowBoost;
         varying vec3 vColor;
         varying float vHighlight;
 
@@ -400,9 +433,11 @@ class ParticleUniverse {
           float glow = pow(1.0 - (dist * 2.0), 1.8);
           float coreHalo = exp(-dist * 7.0) * 0.6;
 
-          // Pointing gesture glow boost
-          vec3 finalColor = vColor + vec3(coreHalo) + vec3(vHighlight * 0.4);
-          gl_FragColor = vec4(finalColor, clamp(glow + coreHalo + vHighlight * 0.3, 0.0, 1.0));
+          // Glow Boost for Two-Hand Energy Field
+          vec3 boostedColor = vColor + vec3(0.2, 0.15, 0.05) * uGlowBoost;
+          vec3 finalColor = boostedColor + vec3(coreHalo) + vec3(vHighlight * 0.4);
+
+          gl_FragColor = vec4(finalColor, clamp(glow + coreHalo + vHighlight * 0.3 + uGlowBoost * 0.25, 0.0, 1.0));
         }
       `,
       transparent: true,
@@ -413,13 +448,16 @@ class ParticleUniverse {
     this.points = new THREE.Points(this.geometry, this.material);
   }
 
-  update(time, handPos, isHandPresent, collapseFactor, pointerPos, isPointing) {
+  update(time, handPos, isOneHand, collapseFactor, pointerPos, isPointing, stretchVec, stretchAmount, glowBoost) {
     this.material.uniforms.uTime.value = time;
     this.material.uniforms.uHandPos.value.copy(handPos);
-    this.material.uniforms.uHandActive.value = isHandPresent ? 1.0 : 0.0;
+    this.material.uniforms.uHandActive.value = isOneHand ? 1.0 : 0.0;
     this.material.uniforms.uCollapse.value = collapseFactor;
     this.material.uniforms.uPointerPos.value.copy(pointerPos);
     this.material.uniforms.uPointerActive.value = isPointing ? 1.0 : 0.0;
+    this.material.uniforms.uStretchVec.value.copy(stretchVec);
+    this.material.uniforms.uStretchAmount.value = stretchAmount;
+    this.material.uniforms.uGlowBoost.value = glowBoost;
   }
 }
 
@@ -430,27 +468,39 @@ class Application {
   constructor() {
     this.canvas = document.getElementById('webgl-canvas');
     this.fpsElement = document.getElementById('hud-fps');
-    this.zoomElement = document.getElementById('hud-zoom');
+    this.scaleElement = document.getElementById('hud-scale');
+    this.rotationElement = document.getElementById('hud-rotation');
     this.statusElement = document.getElementById('hud-status');
     this.errorPanel = document.getElementById('error-dialog');
     this.errorText = document.getElementById('error-text');
 
     this.time = 0;
 
-    // Smoothed interaction vectors & factors
+    // Smooth Interaction Vectors
     this.smoothedHandPos = new THREE.Vector3(0, 0, 0);
     this.smoothedPointerPos = new THREE.Vector3(0, 0, 0);
     this.smoothedCollapse = 0.0;
-    this.targetZoom = 1.0;
-    this.currentZoom = 1.0;
-    this.targetCamPos = new THREE.Vector3(0, 8, 22);
 
-    this.handState = {
-      isHandPresent: false,
-      handPos: new THREE.Vector3(),
-      pointerPos: new THREE.Vector3(),
-      gesture: 'None',
-      pinchRatio: 0.1
+    // Holographic Object Transform Targets
+    this.universePosTarget = new THREE.Vector3(0, 0, 0);
+    this.universeRotTarget = new THREE.Euler(0, 0, 0);
+    this.targetScale = 1.0;
+    this.currentScale = 1.0;
+
+    // Two-Hand Reference States
+    this.initialTwoHandDist = null;
+    this.initialTwoHandScale = 1.0;
+    this.smoothedStretchAmount = 0.0;
+    this.smoothedGlowBoost = 0.0;
+    this.stretchVec = new THREE.Vector3(1, 0, 0);
+
+    this.cameraTargetPos = new THREE.Vector3(0, 8, 22);
+
+    this.trackingData = {
+      numHands: 0,
+      hands: [],
+      mode: 'Idle',
+      primaryGesture: 'None'
     };
 
     if (!this.checkWebGLSupport()) {
@@ -508,14 +558,18 @@ class Application {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+    // Holographic Group Container for Two-Hand Rotation/Translation/Scale
+    this.universeGroup = new THREE.Group();
+    this.scene.add(this.universeGroup);
+
     this.universe = new ParticleUniverse(80000);
-    this.scene.add(this.universe.points);
+    this.universeGroup.add(this.universe.points);
   }
 
   initHandTracking() {
-    this.handTracker = new HandTracker(
+    this.tracker = new MultiHandTracker(
       (data) => {
-        this.handState = data;
+        this.trackingData = data;
       },
       (errorMsg) => {
         this.showError(errorMsg);
@@ -550,53 +604,128 @@ class Application {
 
   updateInteractions() {
     const lerpSpeed = 0.08;
+    const { numHands, hands, mode } = this.trackingData;
 
-    if (this.handState.isHandPresent) {
-      // Smooth 3D cursor position
-      this.smoothedHandPos.lerp(this.handState.handPos, lerpSpeed);
-      this.smoothedPointerPos.lerp(this.handState.pointerPos, lerpSpeed);
+    if (numHands === 1) {
+      // --- ONE HAND INTERACTION MODE ---
+      this.initialTwoHandDist = null; // Reset two hand reference
+      const h1 = hands[0];
 
-      // 1. Pinch Gesture -> Zooming
-      if (this.handState.gesture === 'Pinch') {
+      this.smoothedHandPos.lerp(h1.palmPos, lerpSpeed);
+      this.smoothedPointerPos.lerp(h1.pointerPos, lerpSpeed);
+
+      // Pinch Zoom
+      if (h1.gesture === 'Pinch') {
         const mappedZoom = THREE.MathUtils.mapLinear(
-          THREE.MathUtils.clamp(this.handState.pinchRatio, 0.015, 0.055),
+          THREE.MathUtils.clamp(h1.pinchRatio, 0.015, 0.055),
           0.015, 0.055,
           0.4, 2.2
         );
-        this.targetZoom = mappedZoom;
+        this.targetScale = mappedZoom;
       }
 
-      // 2. Closed Fist -> Core Collapse
-      if (this.handState.gesture === 'Closed Fist') {
+      // Closed Fist Collapse
+      if (h1.gesture === 'Closed Fist') {
         this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 1.0, 0.08);
       } else {
         this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.08);
       }
+
+      // Reset Two-Hand effects
+      this.smoothedStretchAmount = THREE.MathUtils.lerp(this.smoothedStretchAmount, 0.0, 0.08);
+      this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.0, 0.08);
+
+      // Reset Universe translation to zero (handled by local hand shift)
+      this.universePosTarget.set(0, 0, 0);
+
+    } else if (numHands === 2 && mode === 'Two-Hand Holographic') {
+      // --- TWO HAND HOLOGRAPHIC MANIPULATION MODE ---
+      const h1 = hands[0].palmPos;
+      const h2 = hands[1].palmPos;
+
+      // 1. Translation: Hologram center follows Midpoint of both hands
+      const midpoint = new THREE.Vector3().addVectors(h1, h2).multiplyScalar(0.5);
+      this.universePosTarget.copy(midpoint);
+
+      // 2. Scaling & Distance
+      const currentDist = h1.distanceTo(h2);
+      if (this.initialTwoHandDist === null) {
+        this.initialTwoHandDist = currentDist;
+        this.initialTwoHandScale = this.currentScale;
+      }
+
+      const scaleRatio = currentDist / Math.max(this.initialTwoHandDist, 0.001);
+      this.targetScale = THREE.MathUtils.clamp(this.initialTwoHandScale * scaleRatio, 0.35, 3.2);
+
+      // 3. Rotation: Orient relative to hand vector
+      this.stretchVec.subVectors(h1, h2).normalize();
+
+      const pitch = Math.atan2(this.stretchVec.y, Math.sqrt(this.stretchVec.x * this.stretchVec.x + this.stretchVec.z * this.stretchVec.z));
+      const yaw = Math.atan2(this.stretchVec.x, this.stretchVec.z);
+      const roll = (h1.y - h2.y) * 0.15;
+
+      this.universeRotTarget.set(pitch * 1.2, yaw, roll);
+
+      // 4. Elastic Stretch & Energy Glow
+      const stretchDelta = (currentDist - this.initialTwoHandDist) * 0.08;
+      this.smoothedStretchAmount = THREE.MathUtils.lerp(this.smoothedStretchAmount, THREE.MathUtils.clamp(stretchDelta, -0.4, 0.6), 0.1);
+      this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.6, 0.08);
+
+      // Reset single hand variables
+      this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.08);
+      this.smoothedHandPos.lerp(new THREE.Vector3(0, 0, 0), 0.05);
+
     } else {
-      // Return smoothly to origin / default state
+      // --- IDLE STATE ---
+      this.initialTwoHandDist = null;
+
       this.smoothedHandPos.lerp(new THREE.Vector3(0, 0, 0), 0.03);
       this.smoothedPointerPos.lerp(new THREE.Vector3(0, 0, 0), 0.03);
       this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.05);
+      this.smoothedStretchAmount = THREE.MathUtils.lerp(this.smoothedStretchAmount, 0.0, 0.05);
+      this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.0, 0.05);
+
+      this.universePosTarget.set(0, 0, 0);
+
+      // Slowly return universe to level orientation in idle
+      this.universeRotTarget.x = THREE.MathUtils.lerp(this.universeRotTarget.x, 0, 0.02);
+      this.universeRotTarget.z = THREE.MathUtils.lerp(this.universeRotTarget.z, 0, 0.02);
     }
 
-    // Smooth continuous zoom lerp
-    this.currentZoom = THREE.MathUtils.lerp(this.currentZoom, this.targetZoom, 0.05);
-    if (this.zoomElement) {
-      this.zoomElement.textContent = `${Math.round(this.currentZoom * 100)}%`;
+    // Apply Smoothed Transforms to Universe Container
+    this.universeGroup.position.lerp(this.universePosTarget, 0.08);
+
+    this.universeGroup.rotation.x = THREE.MathUtils.lerp(this.universeGroup.rotation.x, this.universeRotTarget.x, 0.06);
+    this.universeGroup.rotation.y = THREE.MathUtils.lerp(this.universeGroup.rotation.y, this.universeRotTarget.y, 0.06);
+    this.universeGroup.rotation.z = THREE.MathUtils.lerp(this.universeGroup.rotation.z, this.universeRotTarget.z, 0.06);
+
+    // Apply Smoothed Scale
+    this.currentScale = THREE.MathUtils.lerp(this.currentScale, this.targetScale, 0.06);
+    this.universeGroup.scale.setScalar(this.currentScale);
+
+    // Update HUD Values
+    if (this.scaleElement) {
+      this.scaleElement.textContent = `${Math.round(this.currentScale * 100)}%`;
+    }
+    if (this.rotationElement) {
+      const degX = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.x));
+      const degY = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.y));
+      const degZ = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.z));
+      this.rotationElement.textContent = `X:${degX}Â° Y:${degY}Â° Z:${degZ}Â°`;
     }
   }
 
   updateCamera(elapsedTime) {
-    const baseRadius = 22.0 / this.currentZoom;
-    const speed = elapsedTime * 0.05;
+    const baseRadius = 22.0;
+    const speed = elapsedTime * 0.04;
 
-    // Drifting camera orbit adjusted by zoom factor
-    this.targetCamPos.x = Math.sin(speed) * baseRadius;
-    this.targetCamPos.z = Math.cos(speed) * baseRadius;
-    this.targetCamPos.y = (6.0 + Math.sin(elapsedTime * 0.1) * 3.0) / this.currentZoom;
+    // Cinematic Camera Drift that follows hologram translation
+    this.cameraTargetPos.x = this.universeGroup.position.x * 0.35 + Math.sin(speed) * baseRadius;
+    this.cameraTargetPos.z = this.universeGroup.position.z * 0.35 + Math.cos(speed) * baseRadius;
+    this.cameraTargetPos.y = this.universeGroup.position.y * 0.35 + 6.0 + Math.sin(elapsedTime * 0.08) * 2.5;
 
-    this.camera.position.lerp(this.targetCamPos, 0.03);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.lerp(this.cameraTargetPos, 0.03);
+    this.camera.lookAt(this.universeGroup.position.x * 0.5, this.universeGroup.position.y * 0.5, this.universeGroup.position.z * 0.5);
   }
 
   animate() {
@@ -608,15 +737,21 @@ class Application {
 
     this.updateInteractions();
 
-    const isPointing = this.handState.isHandPresent && this.handState.gesture === 'Pointing';
+    const isOneHand = this.trackingData.numHands === 1;
+    const isPointing = isOneHand && this.trackingData.primaryGesture === 'Pointing';
+    const pointerPos = isOneHand && this.trackingData.hands[0] ? this.trackingData.hands[0].pointerPos : this.smoothedPointerPos;
+
     if (this.universe) {
       this.universe.update(
         this.time,
         this.smoothedHandPos,
-        this.handState.isHandPresent,
+        isOneHand,
         this.smoothedCollapse,
-        this.smoothedPointerPos,
-        isPointing
+        pointerPos,
+        isPointing,
+        this.stretchVec,
+        this.smoothedStretchAmount,
+        this.smoothedGlowBoost
       );
     }
 
@@ -628,7 +763,7 @@ class Application {
   }
 }
 
-// Start Application on DOM Content Loaded
+// Initialize Application on DOM Content Loaded
 window.addEventListener('DOMContentLoaded', () => {
   new Application();
 });
