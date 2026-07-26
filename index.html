@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Mobile Hand Tracking Orb</title>
+  <style>
+    * {
+      touch-action: none; /* Prevents mobile scroll/zoom while gesturing */
+    }
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      background: #000; 
+    }
+    #webcam { 
+      display: none; 
+    }
+  </style>
+  <!-- Three.js & MediaPipe CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+</head>
+<body>
+
+  <video id="webcam" playsinline></video>
+
+  <script>
+    // --- 1. THREE.JS SCENE SETUP ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.z = 5;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Dynamic mobile pixel scaling
+    document.body.appendChild(renderer.domElement);
+
+    // Optimized Particle Orb (Reduced for Mobile GPU)
+    const geometry = new THREE.BufferGeometry();
+    const count = 1200; 
+    const positions = new Float32Array(count * 3);
+
+    for (let i = 0; i < count * 3; i += 3) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = u * 2.0 * Math.PI;
+      const phi = Math.acos(2.0 * v - 1.0);
+      const r = 1.4;
+
+      positions[i]     = r * Math.sin(phi) * Math.cos(theta);
+      positions[i + 1] = r * Math.sin(phi) * Math.sin(theta);
+      positions[i + 2] = r * Math.cos(phi);
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+      color: 0xffaa00,
+      size: 0.045,
+      transparent: true,
+      opacity: 0.9
+    });
+
+    const sunOrb = new THREE.Points(geometry, material);
+    scene.add(sunOrb);
+
+    // --- 2. MEDIAPIPE HAND TRACKING (MOBILE TUNED) ---
+    const videoElement = document.getElementById('webcam');
+
+    function onResults(results) {
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // Track Wrist landmark for position
+        const wrist = landmarks[0];
+        const targetX = (0.5 - wrist.x) * 6; // Mirrored for selfie view
+        const targetY = (0.5 - wrist.y) * 7;
+
+        // Smooth movement interpolation (lerp)
+        sunOrb.position.x += (targetX - sunOrb.position.x) * 0.15;
+        sunOrb.position.y += (targetY - sunOrb.position.y) * 0.15;
+
+        // Pinch distance for Zoom (Index tip #8 & Thumb tip #4)
+        const thumb = landmarks[4];
+        const index = landmarks[8];
+        const distance = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+
+        // Responsive Mobile Scale
+        const targetScale = Math.max(0.4, distance * 4.5);
+        sunOrb.scale.setScalar(targetScale);
+      }
+    }
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 0, // Lower model complexity for fast mobile processing
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+
+    hands.onResults(onResults);
+
+    // --- 3. FRONT CAMERA INITIALIZATION ---
+    async function startFrontCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user', // Explicitly requests Front Selfie Camera
+            width: { ideal: 360 },
+            height: { ideal: 480 }
+          }
+        });
+        
+        videoElement.srcObject = stream;
+        await videoElement.play();
+
+        const cameraUtils = new Camera(videoElement, {
+          onFrame: async () => {
+            await hands.send({ image: videoElement });
+          },
+          width: 360,
+          height: 480
+        });
+        cameraUtils.start();
+      } catch (err) {
+        console.error("Camera Access Error: ", err);
+      }
+    }
+
+    startFrontCamera();
+
+    // Render loop
+    function animate() {
+      requestAnimationFrame(animate);
+      sunOrb.rotation.y += 0.008; // Idle spin
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Handle screen resize/orientation changes on phone
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+  </html>
+  
