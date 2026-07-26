@@ -1,6 +1,19 @@
 import * as THREE from 'three';
 
 /**
+ * Seeded PRNG Generator (Mulberry32)
+ */
+function createPRNG(seed) {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), s | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * Performance Monitor
  */
 class PerformanceMonitor {
@@ -25,7 +38,7 @@ class PerformanceMonitor {
 }
 
 /**
- * MediaPipe Multi-Hand Tracker (Up to 2 hands)
+ * Multi-Hand Tracker
  */
 class MultiHandTracker {
   constructor(onHandsUpdate, onError) {
@@ -33,7 +46,6 @@ class MultiHandTracker {
     this.onError = onError;
 
     this.trackingStatusEl = document.getElementById('hud-tracking');
-    this.handsCountEl = document.getElementById('hud-hands');
     this.gestureStatusEl = document.getElementById('hud-gesture');
     this.modeStatusEl = document.getElementById('hud-mode');
     this.statusDot = document.getElementById('status-dot');
@@ -44,7 +56,7 @@ class MultiHandTracker {
 
   async init() {
     if (!window.Hands || !window.Camera) {
-      this.updateHUD('Lib Error', 0, 'None', 'Idle', false);
+      this.updateHUD('Lib Error', 'None', 'Idle', false);
       if (this.onError) this.onError("MediaPipe tracking libraries failed to load.");
       return;
     }
@@ -74,11 +86,11 @@ class MultiHandTracker {
         facingMode: 'user'
       });
 
-      this.updateHUD('Searching...', 0, 'None', 'Idle', false);
+      this.updateHUD('Searching...', 'None', 'Idle', false);
       await this.camera.start();
     } catch (err) {
       console.error("Camera access error:", err);
-      this.updateHUD('Permission Denied', 0, 'None', 'Idle', false);
+      this.updateHUD('Permission Denied', 'None', 'Idle', false);
       if (this.onError) this.onError("Camera access was denied or device webcam is unavailable.");
     }
   }
@@ -92,7 +104,6 @@ class MultiHandTracker {
       for (let i = 0; i < results.multiHandLandmarks.length; i++) {
         const landmarks = results.multiHandLandmarks[i];
 
-        // 3D Palm Center Calculation
         const wrist = landmarks[0];
         const indexMcp = landmarks[5];
         const pinkyMcp = landmarks[17];
@@ -101,21 +112,18 @@ class MultiHandTracker {
         const palmY = (wrist.y + indexMcp.y + pinkyMcp.y) / 3.0;
         const palmZ = (wrist.z + indexMcp.z + pinkyMcp.z) / 3.0;
 
-        // Horizontally flipped normalized coordinates [-0.5, 0.5]
         const normX = (1.0 - palmX) - 0.5;
         const normY = 0.5 - palmY;
         const normZ = -palmZ;
 
         const palmPos = new THREE.Vector3(normX * viewWidth, normY * viewHeight, normZ * 12.0);
 
-        // Index Tip position
         const indexTip = landmarks[8];
         const idxX = (1.0 - indexTip.x) - 0.5;
         const idxY = 0.5 - indexTip.y;
         const idxZ = -indexTip.z;
         const pointerPos = new THREE.Vector3(idxX * viewWidth, idxY * viewHeight, idxZ * 12.0);
 
-        // Gesture Classification
         const gestureInfo = this.classifyGesture(landmarks);
 
         parsedHands.push({
@@ -135,13 +143,13 @@ class MultiHandTracker {
     if (numHands === 1) {
       trackingText = '1 Hand Detected';
       gestureText = parsedHands[0].gesture;
-      modeText = 'One-Hand Hover';
+      modeText = 'Infinite Travel';
     } else if (numHands === 2) {
       trackingText = '2 Hands Detected';
-      
+
       const isBothGrabbing = (parsedHands[0].gesture === 'Closed Fist' || parsedHands[0].gesture === 'Pinch' || parsedHands[0].gesture === 'Open Hand') &&
                              (parsedHands[1].gesture === 'Closed Fist' || parsedHands[1].gesture === 'Pinch' || parsedHands[1].gesture === 'Open Hand');
-      
+
       if (isBothGrabbing) {
         gestureText = 'Two-Hand Grab';
         modeText = 'Two-Hand Holographic';
@@ -151,7 +159,7 @@ class MultiHandTracker {
       }
     }
 
-    this.updateHUD(trackingText, numHands, gestureText, modeText, numHands > 0);
+    this.updateHUD(trackingText, gestureText, modeText, numHands > 0);
 
     if (this.onHandsUpdate) {
       this.onHandsUpdate({
@@ -179,7 +187,6 @@ class MultiHandTracker {
     const dist3D = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y, p1.z - p2.z);
     const distWrist = (pt) => dist3D(pt, wrist);
 
-    // Pinch Gesture
     const pinchDist = dist3D(thumbTip, indexTip);
     if (pinchDist < 0.058) {
       return { name: 'Pinch', pinchRatio: pinchDist };
@@ -200,18 +207,15 @@ class MultiHandTracker {
     const isRingFolded = dRingTip < dRingMcp * 1.25;
     const isPinkyFolded = dPinkyTip < dPinkyMcp * 1.25;
 
-    // Closed Fist
     if (isIndexFolded && isMiddleFolded && isRingFolded && isPinkyFolded) {
       return { name: 'Closed Fist' };
     }
 
-    // Pointing
     const isIndexExtended = dIndexTip > dIndexMcp * 1.4;
     if (isIndexExtended && isMiddleFolded && isRingFolded && isPinkyFolded) {
       return { name: 'Pointing' };
     }
 
-    // Open Hand
     if (dIndexTip > dIndexMcp * 1.2 && dMiddleTip > dMiddleMcp * 1.2 && dRingTip > dRingMcp * 1.2) {
       return { name: 'Open Hand' };
     }
@@ -219,9 +223,8 @@ class MultiHandTracker {
     return { name: 'Tracking' };
   }
 
-  updateHUD(trackingText, count, gestureText, modeText, isOk) {
+  updateHUD(trackingText, gestureText, modeText, isOk) {
     if (this.trackingStatusEl) this.trackingStatusEl.textContent = trackingText;
-    if (this.handsCountEl) this.handsCountEl.textContent = count;
     if (this.gestureStatusEl) this.gestureStatusEl.textContent = gestureText;
     if (this.modeStatusEl) this.modeStatusEl.textContent = modeText;
 
@@ -237,80 +240,83 @@ class MultiHandTracker {
 }
 
 /**
- * Procedural Dynamic Particle Universe
+ * Procedural Particle Level Builder
  */
-class ParticleUniverse {
-  constructor(totalCount = 80000) {
-    this.count = totalCount;
-    this.geometry = new THREE.BufferGeometry();
+class ProceduralUniverseLevel {
+  constructor(levelIndex, seed = 1337, count = 40000) {
+    this.levelIndex = levelIndex;
+    this.seed = seed;
+    this.count = count;
+    this.rng = createPRNG(seed + levelIndex * 9999);
 
-    const positions = new Float32Array(this.count * 3);
+    this.geometry = new THREE.BufferGeometry();
+    this.positions = new Float32Array(this.count * 3);
     const colors = new Float32Array(this.count * 3);
     const sizes = new Float32Array(this.count);
     const phases = new Float32Array(this.count);
     const types = new Float32Array(this.count);
 
-    const colorCoreInner = new THREE.Color(0xffffff); // White
-    const colorCoreMid = new THREE.Color(0xffaa00);   // Gold
-    const colorCoreOuter = new THREE.Color(0xff4400); // Orange
-    const colorAmbient = new THREE.Color(0xff8833);   // Amber
-    const colorAccent = new THREE.Color(0x33aaff);    // Cyan
+    // Dynamic Palettes per level
+    const palettes = [
+      [new THREE.Color(0xffffff), new THREE.Color(0xffaa00), new THREE.Color(0xff4400), new THREE.Color(0x33aaff)], // L0 Macro
+      [new THREE.Color(0xffffff), new THREE.Color(0x00ffcc), new THREE.Color(0xaa00ff), new THREE.Color(0xffaa00)], // L1 Atomic
+      [new THREE.Color(0xffffff), new THREE.Color(0x0099ff), new THREE.Color(0xff00aa), new THREE.Color(0x00ff66)], // L2 Sub-atomic
+      [new THREE.Color(0xffffff), new THREE.Color(0xaa00ff), new THREE.Color(0x00ffff), new THREE.Color(0xff8800)], // L3 Micro-quantum
+      [new THREE.Color(0xffffff), new THREE.Color(0xff0055), new THREE.Color(0x00e1ff), new THREE.Color(0xffdd00)]  // L4 Quantum Singularity
+    ];
 
+    const currentPalette = palettes[Math.abs(levelIndex) % palettes.length];
     const coreCount = Math.floor(this.count * 0.45);
     const spiralCount = Math.floor(this.count * 0.35);
 
     for (let i = 0; i < this.count; i++) {
       let x, y, z, size, type, color;
-      const phase = Math.random() * Math.PI * 2;
+      const phase = this.rng() * Math.PI * 2;
 
       if (i < coreCount) {
-        type = 0; // Central Core
-        const radius = Math.pow(Math.random(), 2.0) * 4.5 + 0.1;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
+        type = 0;
+        const radius = Math.pow(this.rng(), 2.0) * 4.5 + 0.1;
+        const theta = this.rng() * Math.PI * 2;
+        const phi = Math.acos(2 * this.rng() - 1);
 
         x = radius * Math.sin(phi) * Math.cos(theta);
         y = radius * Math.sin(phi) * Math.sin(theta) * 0.7;
         z = radius * Math.cos(phi);
 
-        size = (1.0 - radius / 4.6) * 14.0 + Math.random() * 6.0;
+        size = (1.0 - radius / 4.6) * 12.0 + this.rng() * 5.0;
 
         const normDist = radius / 4.6;
-        if (normDist < 0.25) {
-          color = colorCoreInner.clone().lerp(colorCoreMid, normDist * 4);
-        } else {
-          color = colorCoreMid.clone().lerp(colorCoreOuter, (normDist - 0.25) * 1.33);
-        }
+        color = currentPalette[0].clone().lerp(currentPalette[1], normDist * 2.0);
       } else if (i < coreCount + spiralCount) {
-        type = 1; // Spiral Arms
+        type = 1;
         const armIndex = i % 3;
         const armOffset = (armIndex * Math.PI * 2) / 3;
-        const dist = 3.5 + Math.random() * 12.0;
-        const angle = dist * 0.4 + armOffset + (Math.random() - 0.5) * 0.4;
+        const dist = 3.5 + this.rng() * 12.0;
+        const angle = dist * 0.4 + armOffset + (this.rng() - 0.5) * 0.4;
 
-        x = Math.cos(angle) * dist + (Math.random() - 0.5) * 1.5;
-        y = (Math.random() - 0.5) * (1.8 + dist * 0.1);
-        z = Math.sin(angle) * dist + (Math.random() - 0.5) * 1.5;
+        x = Math.cos(angle) * dist + (this.rng() - 0.5) * 1.5;
+        y = (this.rng() - 0.5) * (1.8 + dist * 0.1);
+        z = Math.sin(angle) * dist + (this.rng() - 0.5) * 1.5;
 
-        size = Math.random() * 8.0 + 4.0;
-        color = Math.random() > 0.85 ? colorAccent : colorCoreOuter;
+        size = this.rng() * 7.0 + 3.0;
+        color = this.rng() > 0.85 ? currentPalette[3] : currentPalette[2];
       } else {
-        type = 2; // Ambient Outer Universe
-        const radius = 12.0 + Math.random() * 32.0;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.acos(2 * Math.random() - 1);
+        type = 2;
+        const radius = 12.0 + this.rng() * 30.0;
+        const theta = this.rng() * Math.PI * 2;
+        const phi = Math.acos(2 * this.rng() - 1);
 
         x = radius * Math.sin(phi) * Math.cos(theta);
         y = radius * Math.sin(phi) * Math.sin(theta);
         z = radius * Math.cos(phi);
 
-        size = Math.random() * 6.0 + 2.0;
-        color = Math.random() > 0.92 ? colorAccent : colorAmbient;
+        size = this.rng() * 5.0 + 2.0;
+        color = this.rng() > 0.9 ? currentPalette[3] : currentPalette[1];
       }
 
-      positions[i * 3] = x;
-      positions[i * 3 + 1] = y;
-      positions[i * 3 + 2] = z;
+      this.positions[i * 3] = x;
+      this.positions[i * 3 + 1] = y;
+      this.positions[i * 3 + 2] = z;
 
       colors[i * 3] = color.r;
       colors[i * 3 + 1] = color.g;
@@ -321,7 +327,7 @@ class ParticleUniverse {
       types[i] = type;
     }
 
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     this.geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
     this.geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
@@ -337,7 +343,10 @@ class ParticleUniverse {
         uPointerActive: { value: 0.0 },
         uStretchVec: { value: new THREE.Vector3(1, 0, 0) },
         uStretchAmount: { value: 0.0 },
-        uGlowBoost: { value: 0.0 }
+        uGlowBoost: { value: 0.0 },
+        uLevelScale: { value: 1.0 },
+        uOpacity: { value: 1.0 },
+        uLevelIndex: { value: levelIndex }
       },
       vertexShader: `
         uniform float uTime;
@@ -348,6 +357,8 @@ class ParticleUniverse {
         uniform float uPointerActive;
         uniform vec3 uStretchVec;
         uniform float uStretchAmount;
+        uniform float uLevelScale;
+        uniform float uLevelIndex;
 
         attribute float aSize;
         attribute float aPhase;
@@ -360,9 +371,10 @@ class ParticleUniverse {
           vColor = color;
           vec3 pos = position;
 
-          // Rotation & Pulsing
+          float levelSpeed = 1.0 + abs(uLevelIndex) * 0.35;
+
           if (aType < 0.5) {
-            float angle = uTime * 0.15 + aPhase * 0.1;
+            float angle = uTime * 0.15 * levelSpeed + aPhase * 0.1;
             float c = cos(angle);
             float s = sin(angle);
             float nx = pos.x * c - pos.z * s;
@@ -370,58 +382,59 @@ class ParticleUniverse {
             pos.x = nx;
             pos.z = nz;
 
-            float pulse = 1.0 + 0.06 * sin(uTime * 1.8 + aPhase * 2.0);
+            float pulse = 1.0 + 0.06 * sin(uTime * 1.8 * levelSpeed + aPhase * 2.0);
             pos *= pulse;
           } else if (aType < 1.5) {
-            float angle = uTime * 0.08;
+            float angle = uTime * 0.08 * levelSpeed;
             float c = cos(angle);
             float s = sin(angle);
             float nx = pos.x * c - pos.z * s;
             float nz = pos.x * s + pos.z * c;
             pos.x = nx;
             pos.z = nz;
-            pos.y += sin(uTime * 0.5 + aPhase) * 0.25;
+            pos.y += sin(uTime * 0.5 * levelSpeed + aPhase) * 0.25;
           } else {
-            pos.x += sin(uTime * 0.2 + aPhase) * 0.4;
-            pos.y += cos(uTime * 0.25 + aPhase * 1.5) * 0.4;
-            pos.z += sin(uTime * 0.15 + aPhase * 2.0) * 0.4;
+            pos.x += sin(uTime * 0.2 * levelSpeed + aPhase) * 0.4;
+            pos.y += cos(uTime * 0.25 * levelSpeed + aPhase * 1.5) * 0.4;
+            pos.z += sin(uTime * 0.15 * levelSpeed + aPhase * 2.0) * 0.4;
           }
 
-          // Elastic Holographic Stretching for Two-Hand Grab
           if (aType < 1.5 && abs(uStretchAmount) > 0.001) {
             float proj = dot(pos, uStretchVec);
             pos += uStretchVec * proj * uStretchAmount * 0.35;
           }
 
-          // One-Hand Follow Shift
           if (aType < 1.5) {
             pos += uHandPos * uHandActive;
           }
 
-          // Fist Collapse Attraction
           if (uCollapse > 0.001) {
             vec3 target = (aType < 1.5) ? uHandPos : vec3(0.0);
             pos = mix(pos, target, uCollapse * 0.88);
           }
 
-          // Pointing Cluster Highlight
+          pos *= uLevelScale;
+
           vHighlight = 0.0;
           if (uPointerActive > 0.5) {
             float distToPointer = length(pos - uPointerPos);
-            if (distToPointer < 4.5) {
-              vHighlight = (1.0 - distToPointer / 4.5);
+            if (distToPointer < 4.5 * uLevelScale) {
+              vHighlight = (1.0 - distToPointer / (4.5 * uLevelScale));
             }
           }
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
           gl_Position = projectionMatrix * mvPosition;
           
-          float sizeMultiplier = 1.0 + vHighlight * 1.2;
+          float sizeMultiplier = (1.0 + vHighlight * 1.2) * sqrt(max(uLevelScale, 0.1));
           gl_PointSize = aSize * sizeMultiplier * (260.0 / -mvPosition.z);
         }
       `,
       fragmentShader: `
         uniform float uGlowBoost;
+        uniform float uOpacity;
+        uniform float uTime;
+
         varying vec3 vColor;
         varying float vHighlight;
 
@@ -433,11 +446,12 @@ class ParticleUniverse {
           float glow = pow(1.0 - (dist * 2.0), 1.8);
           float coreHalo = exp(-dist * 7.0) * 0.6;
 
-          // Glow Boost for Two-Hand Energy Field
-          vec3 boostedColor = vColor + vec3(0.2, 0.15, 0.05) * uGlowBoost;
+          float breath = sin(uTime * 2.0) * 0.08 + 1.0;
+          vec3 boostedColor = vColor * breath + vec3(0.2, 0.15, 0.05) * uGlowBoost;
           vec3 finalColor = boostedColor + vec3(coreHalo) + vec3(vHighlight * 0.4);
 
-          gl_FragColor = vec4(finalColor, clamp(glow + coreHalo + vHighlight * 0.3 + uGlowBoost * 0.25, 0.0, 1.0));
+          float alpha = clamp(glow + coreHalo + vHighlight * 0.3 + uGlowBoost * 0.25, 0.0, 1.0) * uOpacity;
+          gl_FragColor = vec4(finalColor, alpha);
         }
       `,
       transparent: true,
@@ -448,7 +462,7 @@ class ParticleUniverse {
     this.points = new THREE.Points(this.geometry, this.material);
   }
 
-  update(time, handPos, isOneHand, collapseFactor, pointerPos, isPointing, stretchVec, stretchAmount, glowBoost) {
+  update(time, handPos, isOneHand, collapseFactor, pointerPos, isPointing, stretchVec, stretchAmount, glowBoost, scale, opacity) {
     this.material.uniforms.uTime.value = time;
     this.material.uniforms.uHandPos.value.copy(handPos);
     this.material.uniforms.uHandActive.value = isOneHand ? 1.0 : 0.0;
@@ -458,6 +472,94 @@ class ParticleUniverse {
     this.material.uniforms.uStretchVec.value.copy(stretchVec);
     this.material.uniforms.uStretchAmount.value = stretchAmount;
     this.material.uniforms.uGlowBoost.value = glowBoost;
+    this.material.uniforms.uLevelScale.value = scale;
+    this.material.uniforms.uOpacity.value = opacity;
+  }
+
+  findClosestParticle(pointerPos) {
+    let minDist = Infinity;
+    let closestIndex = -1;
+    let closestPos = new THREE.Vector3();
+
+    for (let i = 0; i < this.count; i += 10) { // Sub-sample for performance
+      const px = this.positions[i * 3];
+      const py = this.positions[i * 3 + 1];
+      const pz = this.positions[i * 3 + 2];
+
+      const d = Math.hypot(px - pointerPos.x, py - pointerPos.y, pz - pointerPos.z);
+      if (d < minDist) {
+        minDist = d;
+        closestIndex = i;
+        closestPos.set(px, py, pz);
+      }
+    }
+    return { index: closestIndex, pos: closestPos, dist: minDist };
+  }
+}
+
+/**
+ * Infinite Procedural Manager (Handles seamless cross-fading level transitions)
+ */
+class InfiniteUniverseManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.containerGroup = new THREE.Group();
+    this.scene.add(this.containerGroup);
+
+    this.currentLevelIndex = 0;
+    this.primaryLevel = new ProceduralUniverseLevel(0, 1337);
+    this.secondaryLevel = new ProceduralUniverseLevel(1, 1337);
+
+    this.containerGroup.add(this.primaryLevel.points);
+    this.containerGroup.add(this.secondaryLevel.points);
+
+    this.levelNames = [
+      "L0 [Macro Universe]",
+      "L1 [Atomic Structure]",
+      "L2 [Sub-atomic Field]",
+      "L3 [Micro-quantum Grid]",
+      "L4 [Quantum Singularity]"
+    ];
+  }
+
+  getLevelName(idx) {
+    if (idx >= 0 && idx < this.levelNames.length) return this.levelNames[idx];
+    return `L${idx} [Quantum Depth]`;
+  }
+
+  updateLevels(continuousDepth) {
+    const baseIndex = Math.floor(continuousDepth);
+    const progress = continuousDepth - baseIndex; // [0.0, 1.0)
+
+    if (baseIndex !== this.currentLevelIndex) {
+      // Swapping Level Geometry dynamically without crashing memory
+      this.containerGroup.remove(this.primaryLevel.points);
+      this.containerGroup.remove(this.secondaryLevel.points);
+
+      this.currentLevelIndex = baseIndex;
+      this.primaryLevel = new ProceduralUniverseLevel(baseIndex, 1337);
+      this.secondaryLevel = new ProceduralUniverseLevel(baseIndex + 1, 1337);
+
+      this.containerGroup.add(this.primaryLevel.points);
+      this.containerGroup.add(this.secondaryLevel.points);
+    }
+
+    // Primary Level (Current): Scales UP and fades OUT
+    const primaryScale = 1.0 + progress * 3.5;
+    const primaryOpacity = Math.max(0.0, 1.0 - progress * 0.85);
+
+    // Secondary Level (Next): Scales UP from origin and fades IN
+    const secondaryScale = 0.08 + progress * 0.92;
+    const secondaryOpacity = Math.min(1.0, progress * 1.15);
+
+    return {
+      baseIndex,
+      progress: Math.round(progress * 100),
+      primaryScale,
+      primaryOpacity,
+      secondaryScale,
+      secondaryOpacity
+    };
   }
 }
 
@@ -468,26 +570,31 @@ class Application {
   constructor() {
     this.canvas = document.getElementById('webgl-canvas');
     this.fpsElement = document.getElementById('hud-fps');
-    this.scaleElement = document.getElementById('hud-scale');
-    this.rotationElement = document.getElementById('hud-rotation');
+    this.zoomElement = document.getElementById('hud-zoom');
+    this.depthElement = document.getElementById('hud-depth');
+    this.selectedElement = document.getElementById('hud-selected');
+    this.progressElement = document.getElementById('hud-progress');
     this.statusElement = document.getElementById('hud-status');
     this.errorPanel = document.getElementById('error-dialog');
     this.errorText = document.getElementById('error-text');
 
     this.time = 0;
 
-    // Smooth Interaction Vectors
+    // Continuous Infinite Depth State
+    this.continuousDepth = 0.0;
+    this.targetDepth = 0.0;
+
+    // Smoothed Interaction Vectors
     this.smoothedHandPos = new THREE.Vector3(0, 0, 0);
     this.smoothedPointerPos = new THREE.Vector3(0, 0, 0);
     this.smoothedCollapse = 0.0;
 
-    // Holographic Object Transform Targets
+    // Holographic Object Transforms
     this.universePosTarget = new THREE.Vector3(0, 0, 0);
     this.universeRotTarget = new THREE.Euler(0, 0, 0);
     this.targetScale = 1.0;
     this.currentScale = 1.0;
 
-    // Two-Hand Reference States
     this.initialTwoHandDist = null;
     this.initialTwoHandScale = 1.0;
     this.smoothedStretchAmount = 0.0;
@@ -558,12 +665,7 @@ class Application {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // Holographic Group Container for Two-Hand Rotation/Translation/Scale
-    this.universeGroup = new THREE.Group();
-    this.scene.add(this.universeGroup);
-
-    this.universe = new ParticleUniverse(80000);
-    this.universeGroup.add(this.universe.points);
+    this.universeManager = new InfiniteUniverseManager(this.scene);
   }
 
   initHandTracking() {
@@ -576,7 +678,6 @@ class Application {
       }
     );
   }
-
   initEvents() {
     window.addEventListener('resize', () => this.onResize(), false);
   }
@@ -607,47 +708,40 @@ class Application {
     const { numHands, hands, mode } = this.trackingData;
 
     if (numHands === 1) {
-      // --- ONE HAND INTERACTION MODE ---
-      this.initialTwoHandDist = null; // Reset two hand reference
+      this.initialTwoHandDist = null;
       const h1 = hands[0];
 
       this.smoothedHandPos.lerp(h1.palmPos, lerpSpeed);
       this.smoothedPointerPos.lerp(h1.pointerPos, lerpSpeed);
 
-      // Pinch Zoom
+      // 1. Pinch Gesture -> Continuous Procedural Level Travel
       if (h1.gesture === 'Pinch') {
-        const mappedZoom = THREE.MathUtils.mapLinear(
+        const travelSpeed = THREE.MathUtils.mapLinear(
           THREE.MathUtils.clamp(h1.pinchRatio, 0.015, 0.055),
           0.015, 0.055,
-          0.4, 2.2
+          0.04, -0.04
         );
-        this.targetScale = mappedZoom;
+        this.targetDepth = Math.max(0.0, this.targetDepth + travelSpeed);
       }
 
-      // Closed Fist Collapse
+      // 2. Closed Fist Collapse
       if (h1.gesture === 'Closed Fist') {
         this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 1.0, 0.08);
       } else {
         this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.08);
       }
 
-      // Reset Two-Hand effects
       this.smoothedStretchAmount = THREE.MathUtils.lerp(this.smoothedStretchAmount, 0.0, 0.08);
       this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.0, 0.08);
-
-      // Reset Universe translation to zero (handled by local hand shift)
       this.universePosTarget.set(0, 0, 0);
 
     } else if (numHands === 2 && mode === 'Two-Hand Holographic') {
-      // --- TWO HAND HOLOGRAPHIC MANIPULATION MODE ---
       const h1 = hands[0].palmPos;
       const h2 = hands[1].palmPos;
 
-      // 1. Translation: Hologram center follows Midpoint of both hands
       const midpoint = new THREE.Vector3().addVectors(h1, h2).multiplyScalar(0.5);
       this.universePosTarget.copy(midpoint);
 
-      // 2. Scaling & Distance
       const currentDist = h1.distanceTo(h2);
       if (this.initialTwoHandDist === null) {
         this.initialTwoHandDist = currentDist;
@@ -657,28 +751,27 @@ class Application {
       const scaleRatio = currentDist / Math.max(this.initialTwoHandDist, 0.001);
       this.targetScale = THREE.MathUtils.clamp(this.initialTwoHandScale * scaleRatio, 0.35, 3.2);
 
-      // 3. Rotation: Orient relative to hand vector
-      this.stretchVec.subVectors(h1, h2).normalize();
+      // Continuous depth zoom driven by two hand expansion
+      if (scaleRatio > 1.4) {
+        this.targetDepth += 0.015;
+      } else if (scaleRatio < 0.6) {
+        this.targetDepth = Math.max(0.0, this.targetDepth - 0.015);
+      }
 
+      this.stretchVec.subVectors(h1, h2).normalize();
       const pitch = Math.atan2(this.stretchVec.y, Math.sqrt(this.stretchVec.x * this.stretchVec.x + this.stretchVec.z * this.stretchVec.z));
       const yaw = Math.atan2(this.stretchVec.x, this.stretchVec.z);
       const roll = (h1.y - h2.y) * 0.15;
 
       this.universeRotTarget.set(pitch * 1.2, yaw, roll);
 
-      // 4. Elastic Stretch & Energy Glow
       const stretchDelta = (currentDist - this.initialTwoHandDist) * 0.08;
       this.smoothedStretchAmount = THREE.MathUtils.lerp(this.smoothedStretchAmount, THREE.MathUtils.clamp(stretchDelta, -0.4, 0.6), 0.1);
       this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.6, 0.08);
-
-      // Reset single hand variables
       this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.08);
-      this.smoothedHandPos.lerp(new THREE.Vector3(0, 0, 0), 0.05);
 
     } else {
-      // --- IDLE STATE ---
       this.initialTwoHandDist = null;
-
       this.smoothedHandPos.lerp(new THREE.Vector3(0, 0, 0), 0.03);
       this.smoothedPointerPos.lerp(new THREE.Vector3(0, 0, 0), 0.03);
       this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 0.0, 0.05);
@@ -686,46 +779,41 @@ class Application {
       this.smoothedGlowBoost = THREE.MathUtils.lerp(this.smoothedGlowBoost, 0.0, 0.05);
 
       this.universePosTarget.set(0, 0, 0);
-
-      // Slowly return universe to level orientation in idle
       this.universeRotTarget.x = THREE.MathUtils.lerp(this.universeRotTarget.x, 0, 0.02);
       this.universeRotTarget.z = THREE.MathUtils.lerp(this.universeRotTarget.z, 0, 0.02);
-    }
+  }
+         // Continuous Depth Lerp
+    this.continuousDepth = THREE.MathUtils.lerp(this.continuousDepth, this.targetDepth, 0.06);
 
-    // Apply Smoothed Transforms to Universe Container
-    this.universeGroup.position.lerp(this.universePosTarget, 0.08);
+    // Transforms
+    this.universeManager.containerGroup.position.lerp(this.universePosTarget, 0.08);
+    this.universeManager.containerGroup.rotation.x = THREE.MathUtils.lerp(this.universeManager.containerGroup.rotation.x, this.universeRotTarget.x, 0.06);
+    this.universeManager.containerGroup.rotation.y = THREE.MathUtils.lerp(this.universeManager.containerGroup.rotation.y, this.universeRotTarget.y, 0.06);
+    this.universeManager.containerGroup.rotation.z = THREE.MathUtils.lerp(this.universeManager.containerGroup.rotation.z, this.universeRotTarget.z, 0.06);
 
-    this.universeGroup.rotation.x = THREE.MathUtils.lerp(this.universeGroup.rotation.x, this.universeRotTarget.x, 0.06);
-    this.universeGroup.rotation.y = THREE.MathUtils.lerp(this.universeGroup.rotation.y, this.universeRotTarget.y, 0.06);
-    this.universeGroup.rotation.z = THREE.MathUtils.lerp(this.universeGroup.rotation.z, this.universeRotTarget.z, 0.06);
-
-    // Apply Smoothed Scale
     this.currentScale = THREE.MathUtils.lerp(this.currentScale, this.targetScale, 0.06);
-    this.universeGroup.scale.setScalar(this.currentScale);
-
-    // Update HUD Values
-    if (this.scaleElement) {
-      this.scaleElement.textContent = `${Math.round(this.currentScale * 100)}%`;
-    }
-    if (this.rotationElement) {
-      const degX = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.x));
-      const degY = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.y));
-      const degZ = Math.round(THREE.MathUtils.radToDeg(this.universeGroup.rotation.z));
-      this.rotationElement.textContent = `X:${degX}Â° Y:${degY}Â° Z:${degZ}Â°`;
-    }
+    this.universeManager.containerGroup.scale.setScalar(this.currentScale);
   }
 
   updateCamera(elapsedTime) {
     const baseRadius = 22.0;
     const speed = elapsedTime * 0.04;
 
-    // Cinematic Camera Drift that follows hologram translation
-    this.cameraTargetPos.x = this.universeGroup.position.x * 0.35 + Math.sin(speed) * baseRadius;
-    this.cameraTargetPos.z = this.universeGroup.position.z * 0.35 + Math.cos(speed) * baseRadius;
-    this.cameraTargetPos.y = this.universeGroup.position.y * 0.35 + 6.0 + Math.sin(elapsedTime * 0.08) * 2.5;
+    this.cameraTargetPos.x = this.universeManager.containerGroup.position.x * 0.35 + Math.sin(speed) * baseRadius;
+    this.cameraTargetPos.z = this.universeManager.containerGroup.position.z * 0.35 + Math.cos(speed) * baseRadius;
+    this.cameraTargetPos.y = this.universeManager.containerGroup.position.y * 0.35 + 6.0 + Math.sin(elapsedTime * 0.08) * 2.5;
+
+    // FOV Breathing during level travel
+    const levelProgress = this.continuousDepth - Math.floor(this.continuousDepth);
+    this.camera.fov = 60 + Math.sin(levelProgress * Math.PI) * 5.0;
+    this.camera.updateProjectionMatrix();
 
     this.camera.position.lerp(this.cameraTargetPos, 0.03);
-    this.camera.lookAt(this.universeGroup.position.x * 0.5, this.universeGroup.position.y * 0.5, this.universeGroup.position.z * 0.5);
+    this.camera.lookAt(
+      this.universeManager.containerGroup.position.x * 0.5,
+      this.universeManager.containerGroup.position.y * 0.5,
+      this.universeManager.containerGroup.position.z * 0.5
+    );
   }
 
   animate() {
@@ -737,12 +825,25 @@ class Application {
 
     this.updateInteractions();
 
+    const levelData = this.universeManager.updateLevels(this.continuousDepth);
+
     const isOneHand = this.trackingData.numHands === 1;
     const isPointing = isOneHand && this.trackingData.primaryGesture === 'Pointing';
     const pointerPos = isOneHand && this.trackingData.hands[0] ? this.trackingData.hands[0].pointerPos : this.smoothedPointerPos;
 
-    if (this.universe) {
-      this.universe.update(
+    // Particle Selection & Highlight
+    if (isPointing && this.universeManager.primaryLevel) {
+      const hit = this.universeManager.primaryLevel.findClosestParticle(pointerPos);
+      if (hit.closestIndex !== -1 && this.selectedElement) {
+        this.selectedElement.textContent = `Cluster #${hit.index}`;
+      }
+    } else if (this.selectedElement) {
+      this.selectedElement.textContent = 'None';
+    }
+
+    // Update Primary and Secondary Render Levels
+    if (this.universeManager.primaryLevel) {
+      this.universeManager.primaryLevel.update(
         this.time,
         this.smoothedHandPos,
         isOneHand,
@@ -751,12 +852,40 @@ class Application {
         isPointing,
         this.stretchVec,
         this.smoothedStretchAmount,
-        this.smoothedGlowBoost
+        this.smoothedGlowBoost,
+        levelData.primaryScale,
+        levelData.primaryOpacity
+      );
+    }
+
+    if (this.universeManager.secondaryLevel) {
+      this.universeManager.secondaryLevel.update(
+        this.time,
+        this.smoothedHandPos,
+        isOneHand,
+        this.smoothedCollapse,
+        pointerPos,
+        isPointing,
+        this.stretchVec,
+        this.smoothedStretchAmount,
+        this.smoothedGlowBoost,
+        levelData.secondaryScale,
+        levelData.secondaryOpacity
       );
     }
 
     this.updateCamera(this.time);
 
+    // Update HUD
+    if (this.depthElement) {
+      this.depthElement.textContent = this.universeManager.getLevelName(levelData.baseIndex);
+    }
+    if (this.progressElement) {
+      this.progressElement.textContent = `${levelData.progress}%`;
+    }
+    if (this.zoomElement) {
+      this.zoomElement.textContent = `${Math.round(this.currentScale * 100)}%`;
+    }
     if (this.renderer && this.scene && this.camera) {
       this.renderer.render(this.scene, this.camera);
     }
