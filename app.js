@@ -14,13 +14,16 @@ function createPRNG(seed) {
 }
 
 /**
- * Performance Monitor
+ * Performance Monitor & Adaptive LOD Manager
  */
 class PerformanceMonitor {
-  constructor(onUpdate) {
+  constructor(onUpdate, onAdaptiveDrop) {
     this.onUpdate = onUpdate;
+    this.onAdaptiveDrop = onAdaptiveDrop;
     this.frameCount = 0;
     this.lastTime = performance.now();
+    this.lowFpsCount = 0;
+    this.isLowPerformance = false;
   }
 
   tick() {
@@ -31,6 +34,18 @@ class PerformanceMonitor {
     if (elapsed >= 500) {
       const fps = Math.round((this.frameCount * 1000) / elapsed);
       if (this.onUpdate) this.onUpdate(fps);
+
+      // Adaptive Performance Trigger for slower devices
+      if (fps < 40 && !this.isLowPerformance) {
+        this.lowFpsCount++;
+        if (this.lowFpsCount >= 3) {
+          this.isLowPerformance = true;
+          if (this.onAdaptiveDrop) this.onAdaptiveDrop();
+        }
+      } else if (fps >= 50) {
+        this.lowFpsCount = 0;
+      }
+
       this.frameCount = 0;
       this.lastTime = now;
     }
@@ -38,12 +53,57 @@ class PerformanceMonitor {
 }
 
 /**
- * Multi-Hand Tracker
+ * Ambient Background Dust & Atmospheric Glow
+ */
+class AmbientBackground {
+  constructor(count = 3000) {
+    this.count = count;
+    this.geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(this.count * 3);
+    const colors = new Float32Array(this.count * 3);
+
+    const baseColor = new THREE.Color(0x334466);
+
+    for (let i = 0; i < this.count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * 120.0;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 120.0;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 120.0;
+
+      const c = baseColor.clone().multiplyScalar(0.2 + Math.random() * 0.3);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    this.material = new THREE.PointsMaterial({
+      size: 1.8,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.45,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    this.points = new THREE.Points(this.geometry, this.material);
+  }
+
+  update(time) {
+    this.points.rotation.y = time * 0.012;
+    this.points.rotation.x = Math.sin(time * 0.008) * 0.05;
+  }
+}
+
+/**
+ * MediaPipe Multi-Hand Tracker
  */
 class MultiHandTracker {
-  constructor(onHandsUpdate, onError) {
+  constructor(onHandsUpdate, onError, onGestureEvent) {
     this.onHandsUpdate = onHandsUpdate;
     this.onError = onError;
+    this.onGestureEvent = onGestureEvent;
 
     this.trackingStatusEl = document.getElementById('hud-tracking');
     this.gestureStatusEl = document.getElementById('hud-gesture');
@@ -51,6 +111,7 @@ class MultiHandTracker {
     this.statusDot = document.getElementById('status-dot');
     this.videoElement = document.getElementById('webcam');
 
+    this.prevMode = 'Idle';
     this.init();
   }
 
@@ -159,6 +220,19 @@ class MultiHandTracker {
       }
     }
 
+    // Trigger Energy Wave on Event Transitions
+    if (this.onGestureEvent && modeText !== this.prevMode) {
+      if (modeText === 'Two-Hand Holographic') {
+        const mid = parsedHands.length === 2 ?
+          new THREE.Vector3().addVectors(parsedHands[0].palmPos, parsedHands[1].palmPos).multiplyScalar(0.5) :
+          new THREE.Vector3(0, 0, 0);
+        this.onGestureEvent('grab', mid);
+      } else if (this.prevMode === 'Two-Hand Holographic') {
+        this.onGestureEvent('release', new THREE.Vector3(0, 0, 0));
+      }
+      this.prevMode = modeText;
+    }
+
     this.updateHUD(trackingText, gestureText, modeText, numHands > 0);
 
     if (this.onHandsUpdate) {
@@ -240,7 +314,7 @@ class MultiHandTracker {
 }
 
 /**
- * Procedural Particle Level Builder
+ * Advanced Holographic Particle Level Builder with Custom GLSL Shaders
  */
 class ProceduralUniverseLevel {
   constructor(levelIndex, seed = 1337, count = 40000) {
@@ -256,13 +330,12 @@ class ProceduralUniverseLevel {
     const phases = new Float32Array(this.count);
     const types = new Float32Array(this.count);
 
-    // Dynamic Palettes per level
     const palettes = [
-      [new THREE.Color(0xffffff), new THREE.Color(0xffaa00), new THREE.Color(0xff4400), new THREE.Color(0x33aaff)], // L0 Macro
-      [new THREE.Color(0xffffff), new THREE.Color(0x00ffcc), new THREE.Color(0xaa00ff), new THREE.Color(0xffaa00)], // L1 Atomic
-      [new THREE.Color(0xffffff), new THREE.Color(0x0099ff), new THREE.Color(0xff00aa), new THREE.Color(0x00ff66)], // L2 Sub-atomic
-      [new THREE.Color(0xffffff), new THREE.Color(0xaa00ff), new THREE.Color(0x00ffff), new THREE.Color(0xff8800)], // L3 Micro-quantum
-      [new THREE.Color(0xffffff), new THREE.Color(0xff0055), new THREE.Color(0x00e1ff), new THREE.Color(0xffdd00)]  // L4 Quantum Singularity
+      [new THREE.Color(0xffffff), new THREE.Color(0xffaa00), new THREE.Color(0xff4400), new THREE.Color(0x33aaff)],
+      [new THREE.Color(0xffffff), new THREE.Color(0x00ffcc), new THREE.Color(0xaa00ff), new THREE.Color(0xffaa00)],
+      [new THREE.Color(0xffffff), new THREE.Color(0x0099ff), new THREE.Color(0xff00aa), new THREE.Color(0x00ff66)],
+      [new THREE.Color(0xffffff), new THREE.Color(0xaa00ff), new THREE.Color(0x00ffff), new THREE.Color(0xff8800)],
+      [new THREE.Color(0xffffff), new THREE.Color(0xff0055), new THREE.Color(0x00e1ff), new THREE.Color(0xffdd00)]
     ];
 
     const currentPalette = palettes[Math.abs(levelIndex) % palettes.length];
@@ -284,7 +357,6 @@ class ProceduralUniverseLevel {
         z = radius * Math.cos(phi);
 
         size = (1.0 - radius / 4.6) * 12.0 + this.rng() * 5.0;
-
         const normDist = radius / 4.6;
         color = currentPalette[0].clone().lerp(currentPalette[1], normDist * 2.0);
       } else if (i < coreCount + spiralCount) {
@@ -346,7 +418,10 @@ class ProceduralUniverseLevel {
         uGlowBoost: { value: 0.0 },
         uLevelScale: { value: 1.0 },
         uOpacity: { value: 1.0 },
-        uLevelIndex: { value: levelIndex }
+        uLevelIndex: { value: levelIndex },
+        uWaveOrigin: { value: new THREE.Vector3(0, 0, 0) },
+        uWaveProgress: { value: 0.0 },
+        uWaveIntensity: { value: 0.0 }
       },
       vertexShader: `
         uniform float uTime;
@@ -359,6 +434,9 @@ class ProceduralUniverseLevel {
         uniform float uStretchAmount;
         uniform float uLevelScale;
         uniform float uLevelIndex;
+        uniform vec3 uWaveOrigin;
+        uniform float uWaveProgress;
+        uniform float uWaveIntensity;
 
         attribute float aSize;
         attribute float aPhase;
@@ -366,6 +444,7 @@ class ProceduralUniverseLevel {
         attribute vec3 color;
         varying vec3 vColor;
         varying float vHighlight;
+        varying float vFlicker;
 
         void main() {
           vColor = color;
@@ -373,6 +452,10 @@ class ProceduralUniverseLevel {
 
           float levelSpeed = 1.0 + abs(uLevelIndex) * 0.35;
 
+          // Per-particle organic flicker
+          vFlicker = sin(uTime * 4.0 + aPhase * 10.0) * 0.15 + 0.85;
+
+          // Floating & Rotation Dynamics
           if (aType < 0.5) {
             float angle = uTime * 0.15 * levelSpeed + aPhase * 0.1;
             float c = cos(angle);
@@ -399,27 +482,44 @@ class ProceduralUniverseLevel {
             pos.z += sin(uTime * 0.15 * levelSpeed + aPhase * 2.0) * 0.4;
           }
 
+          // Elastic Holographic Stretching
           if (aType < 1.5 && abs(uStretchAmount) > 0.001) {
             float proj = dot(pos, uStretchVec);
             pos += uStretchVec * proj * uStretchAmount * 0.35;
           }
 
+          // Hand Follow Translation
           if (aType < 1.5) {
             pos += uHandPos * uHandActive;
           }
 
+          // Fist Collapse Attraction
           if (uCollapse > 0.001) {
             vec3 target = (aType < 1.5) ? uHandPos : vec3(0.0);
             pos = mix(pos, target, uCollapse * 0.88);
           }
 
+          // Holographic Energy Shockwave Wave Propagation
+          vHighlight = 0.0;
+          if (uWaveIntensity > 0.01) {
+            float distToWave = length(pos - uWaveOrigin);
+            float waveRadius = uWaveProgress * 32.0;
+            float waveDist = abs(distToWave - waveRadius);
+            if (waveDist < 4.0) {
+              float waveFactor = (1.0 - waveDist / 4.0) * (1.0 - uWaveProgress) * uWaveIntensity;
+              vec3 waveDir = normalize(pos - uWaveOrigin + vec3(0.001));
+              pos += waveDir * waveFactor * 2.2;
+              vHighlight += waveFactor * 2.5;
+            }
+          }
+
           pos *= uLevelScale;
 
-          vHighlight = 0.0;
+          // Pointing Cluster Highlight
           if (uPointerActive > 0.5) {
             float distToPointer = length(pos - uPointerPos);
             if (distToPointer < 4.5 * uLevelScale) {
-              vHighlight = (1.0 - distToPointer / (4.5 * uLevelScale));
+              vHighlight += (1.0 - distToPointer / (4.5 * uLevelScale));
             }
           }
 
@@ -437,20 +537,23 @@ class ProceduralUniverseLevel {
 
         varying vec3 vColor;
         varying float vHighlight;
+        varying float vFlicker;
 
         void main() {
           vec2 coord = gl_PointCoord - vec2(0.5);
           float dist = length(coord);
           if (dist > 0.5) discard;
 
+          // Multi-layer Fresnel Corona Glow
           float glow = pow(1.0 - (dist * 2.0), 1.8);
-          float coreHalo = exp(-dist * 7.0) * 0.6;
+          float coreHalo = exp(-dist * 7.5) * 0.65;
 
-          float breath = sin(uTime * 2.0) * 0.08 + 1.0;
-          vec3 boostedColor = vColor * breath + vec3(0.2, 0.15, 0.05) * uGlowBoost;
-          vec3 finalColor = boostedColor + vec3(coreHalo) + vec3(vHighlight * 0.4);
+          // Color Breathing
+          float breath = sin(uTime * 2.2) * 0.08 + 1.0;
+          vec3 boostedColor = vColor * breath * vFlicker + vec3(0.2, 0.15, 0.05) * uGlowBoost;
+          vec3 finalColor = boostedColor + vec3(coreHalo) + vec3(vHighlight * 0.45);
 
-          float alpha = clamp(glow + coreHalo + vHighlight * 0.3 + uGlowBoost * 0.25, 0.0, 1.0) * uOpacity;
+          float alpha = clamp(glow + coreHalo + vHighlight * 0.35 + uGlowBoost * 0.25, 0.0, 1.0) * uOpacity;
           gl_FragColor = vec4(finalColor, alpha);
         }
       `,
@@ -462,7 +565,7 @@ class ProceduralUniverseLevel {
     this.points = new THREE.Points(this.geometry, this.material);
   }
 
-  update(time, handPos, isOneHand, collapseFactor, pointerPos, isPointing, stretchVec, stretchAmount, glowBoost, scale, opacity) {
+  update(time, handPos, isOneHand, collapseFactor, pointerPos, isPointing, stretchVec, stretchAmount, glowBoost, scale, opacity, waveOrigin, waveProgress, waveIntensity) {
     this.material.uniforms.uTime.value = time;
     this.material.uniforms.uHandPos.value.copy(handPos);
     this.material.uniforms.uHandActive.value = isOneHand ? 1.0 : 0.0;
@@ -474,6 +577,9 @@ class ProceduralUniverseLevel {
     this.material.uniforms.uGlowBoost.value = glowBoost;
     this.material.uniforms.uLevelScale.value = scale;
     this.material.uniforms.uOpacity.value = opacity;
+    this.material.uniforms.uWaveOrigin.value.copy(waveOrigin);
+    this.material.uniforms.uWaveProgress.value = waveProgress;
+    this.material.uniforms.uWaveIntensity.value = waveIntensity;
   }
 
   findClosestParticle(pointerPos) {
@@ -481,7 +587,7 @@ class ProceduralUniverseLevel {
     let closestIndex = -1;
     let closestPos = new THREE.Vector3();
 
-    for (let i = 0; i < this.count; i += 10) { // Sub-sample for performance
+    for (let i = 0; i < this.count; i += 12) {
       const px = this.positions[i * 3];
       const py = this.positions[i * 3 + 1];
       const pz = this.positions[i * 3 + 2];
@@ -495,10 +601,14 @@ class ProceduralUniverseLevel {
     }
     return { index: closestIndex, pos: closestPos, dist: minDist };
   }
+
+  setLowPerformanceLOD() {
+    this.geometry.setDrawRange(0, Math.floor(this.count * 0.65));
+  }
 }
 
 /**
- * Infinite Procedural Manager (Handles seamless cross-fading level transitions)
+ * Infinite Procedural Manager with Holographic Energy Waves
  */
 class InfiniteUniverseManager {
   constructor(scene) {
@@ -512,6 +622,11 @@ class InfiniteUniverseManager {
 
     this.containerGroup.add(this.primaryLevel.points);
     this.containerGroup.add(this.secondaryLevel.points);
+
+    this.waveOrigin = new THREE.Vector3(0, 0, 0);
+    this.waveProgress = 0.0;
+    this.waveIntensity = 0.0;
+    this.isWaveActive = false;
 
     this.levelNames = [
       "L0 [Macro Universe]",
@@ -527,12 +642,19 @@ class InfiniteUniverseManager {
     return `L${idx} [Quantum Depth]`;
   }
 
-  updateLevels(continuousDepth) {
-    const baseIndex = Math.floor(continuousDepth);
-    const progress = continuousDepth - baseIndex; // [0.0, 1.0)
+  triggerWave(origin, intensity = 1.0) {
+    this.waveOrigin.copy(origin);
+    this.waveProgress = 0.0;
+    this.waveIntensity = intensity;
+    this.isWaveActive = true;
+  }
 
+  updateLevels(continuousDepth, deltaTime) {
+    const baseIndex = Math.floor(continuousDepth);
+    const progress = continuousDepth - baseIndex;
+
+    // Transition between level buffers
     if (baseIndex !== this.currentLevelIndex) {
-      // Swapping Level Geometry dynamically without crashing memory
       this.containerGroup.remove(this.primaryLevel.points);
       this.containerGroup.remove(this.secondaryLevel.points);
 
@@ -542,13 +664,22 @@ class InfiniteUniverseManager {
 
       this.containerGroup.add(this.primaryLevel.points);
       this.containerGroup.add(this.secondaryLevel.points);
+
+      this.triggerWave(new THREE.Vector3(0, 0, 0), 1.2);
+  }
+        // Animate Shockwave
+    if (this.isWaveActive) {
+      this.waveProgress += deltaTime * 1.5;
+      if (this.waveProgress >= 1.0) {
+        this.waveProgress = 1.0;
+        this.waveIntensity = 0.0;
+        this.isWaveActive = false;
+      }
     }
 
-    // Primary Level (Current): Scales UP and fades OUT
     const primaryScale = 1.0 + progress * 3.5;
     const primaryOpacity = Math.max(0.0, 1.0 - progress * 0.85);
 
-    // Secondary Level (Next): Scales UP from origin and fades IN
     const secondaryScale = 0.08 + progress * 0.92;
     const secondaryOpacity = Math.min(1.0, progress * 1.15);
 
@@ -560,6 +691,11 @@ class InfiniteUniverseManager {
       secondaryScale,
       secondaryOpacity
     };
+  }
+
+  enableLowPerformanceLOD() {
+    if (this.primaryLevel) this.primaryLevel.setLowPerformanceLOD();
+    if (this.secondaryLevel) this.secondaryLevel.setLowPerformanceLOD();
   }
 }
 
@@ -579,17 +715,15 @@ class Application {
     this.errorText = document.getElementById('error-text');
 
     this.time = 0;
+    this.prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Continuous Infinite Depth State
     this.continuousDepth = 0.0;
     this.targetDepth = 0.0;
 
-    // Smoothed Interaction Vectors
     this.smoothedHandPos = new THREE.Vector3(0, 0, 0);
     this.smoothedPointerPos = new THREE.Vector3(0, 0, 0);
     this.smoothedCollapse = 0.0;
 
-    // Holographic Object Transforms
     this.universePosTarget = new THREE.Vector3(0, 0, 0);
     this.universeRotTarget = new THREE.Euler(0, 0, 0);
     this.targetScale = 1.0;
@@ -665,6 +799,11 @@ class Application {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
+    // Ambient Background Field
+    this.background = new AmbientBackground(2500);
+    this.scene.add(this.background.points);
+
+    // Infinite Universe System
     this.universeManager = new InfiniteUniverseManager(this.scene);
   }
 
@@ -675,19 +814,32 @@ class Application {
       },
       (errorMsg) => {
         this.showError(errorMsg);
+      },
+      (eventType, position) => {
+        if (this.universeManager) {
+          this.universeManager.triggerWave(position, eventType === 'grab' ? 1.0 : 0.7);
+        }
       }
     );
   }
+
   initEvents() {
     window.addEventListener('resize', () => this.onResize(), false);
   }
 
   initMonitor() {
-    this.monitor = new PerformanceMonitor((fps) => {
-      if (this.fpsElement) {
-        this.fpsElement.textContent = fps;
+    this.monitor = new PerformanceMonitor(
+      (fps) => {
+        if (this.fpsElement) this.fpsElement.textContent = fps;
+      },
+      () => {
+        // Adaptive Performance Trigger for low-end hardware
+        if (this.universeManager) {
+          this.universeManager.enableLowPerformanceLOD();
+        }
+        this.renderer.setPixelRatio(1.0);
       }
-    });
+    );
   }
 
   onResize() {
@@ -700,11 +852,10 @@ class Application {
     this.camera.updateProjectionMatrix();
 
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.monitor.isLowPerformance ? 1.0 : 2));
   }
-
   updateInteractions() {
-    const lerpSpeed = 0.08;
+    const lerpSpeed = this.prefersReducedMotion ? 0.04 : 0.08;
     const { numHands, hands, mode } = this.trackingData;
 
     if (numHands === 1) {
@@ -714,7 +865,6 @@ class Application {
       this.smoothedHandPos.lerp(h1.palmPos, lerpSpeed);
       this.smoothedPointerPos.lerp(h1.pointerPos, lerpSpeed);
 
-      // 1. Pinch Gesture -> Continuous Procedural Level Travel
       if (h1.gesture === 'Pinch') {
         const travelSpeed = THREE.MathUtils.mapLinear(
           THREE.MathUtils.clamp(h1.pinchRatio, 0.015, 0.055),
@@ -724,7 +874,6 @@ class Application {
         this.targetDepth = Math.max(0.0, this.targetDepth + travelSpeed);
       }
 
-      // 2. Closed Fist Collapse
       if (h1.gesture === 'Closed Fist') {
         this.smoothedCollapse = THREE.MathUtils.lerp(this.smoothedCollapse, 1.0, 0.08);
       } else {
@@ -751,7 +900,6 @@ class Application {
       const scaleRatio = currentDist / Math.max(this.initialTwoHandDist, 0.001);
       this.targetScale = THREE.MathUtils.clamp(this.initialTwoHandScale * scaleRatio, 0.35, 3.2);
 
-      // Continuous depth zoom driven by two hand expansion
       if (scaleRatio > 1.4) {
         this.targetDepth += 0.015;
       } else if (scaleRatio < 0.6) {
@@ -781,11 +929,10 @@ class Application {
       this.universePosTarget.set(0, 0, 0);
       this.universeRotTarget.x = THREE.MathUtils.lerp(this.universeRotTarget.x, 0, 0.02);
       this.universeRotTarget.z = THREE.MathUtils.lerp(this.universeRotTarget.z, 0, 0.02);
-  }
-         // Continuous Depth Lerp
+    }
+
     this.continuousDepth = THREE.MathUtils.lerp(this.continuousDepth, this.targetDepth, 0.06);
 
-    // Transforms
     this.universeManager.containerGroup.position.lerp(this.universePosTarget, 0.08);
     this.universeManager.containerGroup.rotation.x = THREE.MathUtils.lerp(this.universeManager.containerGroup.rotation.x, this.universeRotTarget.x, 0.06);
     this.universeManager.containerGroup.rotation.y = THREE.MathUtils.lerp(this.universeManager.containerGroup.rotation.y, this.universeRotTarget.y, 0.06);
@@ -797,15 +944,14 @@ class Application {
 
   updateCamera(elapsedTime) {
     const baseRadius = 22.0;
-    const speed = elapsedTime * 0.04;
+    const speed = elapsedTime * (this.prefersReducedMotion ? 0.015 : 0.04);
 
     this.cameraTargetPos.x = this.universeManager.containerGroup.position.x * 0.35 + Math.sin(speed) * baseRadius;
     this.cameraTargetPos.z = this.universeManager.containerGroup.position.z * 0.35 + Math.cos(speed) * baseRadius;
     this.cameraTargetPos.y = this.universeManager.containerGroup.position.y * 0.35 + 6.0 + Math.sin(elapsedTime * 0.08) * 2.5;
 
-    // FOV Breathing during level travel
     const levelProgress = this.continuousDepth - Math.floor(this.continuousDepth);
-    this.camera.fov = 60 + Math.sin(levelProgress * Math.PI) * 5.0;
+    this.camera.fov = 60 + Math.sin(levelProgress * Math.PI) * (this.prefersReducedMotion ? 2.0 : 5.0);
     this.camera.updateProjectionMatrix();
 
     this.camera.position.lerp(this.cameraTargetPos, 0.03);
@@ -819,19 +965,20 @@ class Application {
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    this.time += 0.016;
+    const deltaTime = 0.016;
+    this.time += deltaTime;
 
     if (this.monitor) this.monitor.tick();
+    if (this.background) this.background.update(this.time);
 
     this.updateInteractions();
 
-    const levelData = this.universeManager.updateLevels(this.continuousDepth);
+    const levelData = this.universeManager.updateLevels(this.continuousDepth, deltaTime);
 
     const isOneHand = this.trackingData.numHands === 1;
     const isPointing = isOneHand && this.trackingData.primaryGesture === 'Pointing';
     const pointerPos = isOneHand && this.trackingData.hands[0] ? this.trackingData.hands[0].pointerPos : this.smoothedPointerPos;
 
-    // Particle Selection & Highlight
     if (isPointing && this.universeManager.primaryLevel) {
       const hit = this.universeManager.primaryLevel.findClosestParticle(pointerPos);
       if (hit.closestIndex !== -1 && this.selectedElement) {
@@ -839,9 +986,8 @@ class Application {
       }
     } else if (this.selectedElement) {
       this.selectedElement.textContent = 'None';
-    }
-
-    // Update Primary and Secondary Render Levels
+        }
+    // Render Primary and Secondary Levels
     if (this.universeManager.primaryLevel) {
       this.universeManager.primaryLevel.update(
         this.time,
@@ -854,7 +1000,10 @@ class Application {
         this.smoothedStretchAmount,
         this.smoothedGlowBoost,
         levelData.primaryScale,
-        levelData.primaryOpacity
+        levelData.primaryOpacity,
+        this.universeManager.waveOrigin,
+        this.universeManager.waveProgress,
+        this.universeManager.waveIntensity
       );
     }
 
@@ -870,13 +1019,15 @@ class Application {
         this.smoothedStretchAmount,
         this.smoothedGlowBoost,
         levelData.secondaryScale,
-        levelData.secondaryOpacity
+        levelData.secondaryOpacity,
+        this.universeManager.waveOrigin,
+        this.universeManager.waveProgress,
+        this.universeManager.waveIntensity
       );
     }
 
     this.updateCamera(this.time);
 
-    // Update HUD
     if (this.depthElement) {
       this.depthElement.textContent = this.universeManager.getLevelName(levelData.baseIndex);
     }
@@ -886,6 +1037,7 @@ class Application {
     if (this.zoomElement) {
       this.zoomElement.textContent = `${Math.round(this.currentScale * 100)}%`;
     }
+
     if (this.renderer && this.scene && this.camera) {
       this.renderer.render(this.scene, this.camera);
     }
