@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Particle Interface</title>
   <link rel="stylesheet" href="style.css">
+  
+  <!-- MediaPipe Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <!-- Three.js Module Import -->
   <script type="importmap">
     {
       "imports": {
@@ -15,17 +21,26 @@
 </head>
 <body>
   <canvas id="webgl-canvas"></canvas>
+  <video id="webcam" playsinline muted></video>
 
   <div id="hud-container">
     <div class="hud-panel">
       <div class="hud-header">
         <span class="hud-title">PARTICLE INTERFACE</span>
-        <span class="status-pulse"></span>
+        <span class="status-pulse" id="status-dot"></span>
       </div>
       <div class="hud-body">
         <div class="hud-row">
           <span class="hud-label">Tracking</span>
-          <span class="hud-value" id="hud-tracking">Waiting...</span>
+          <span class="hud-value" id="hud-tracking">Searching...</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Gesture</span>
+          <span class="hud-value gesture-active" id="hud-gesture">None</span>
+        </div>
+        <div class="hud-row">
+          <span class="hud-label">Zoom Level</span>
+          <span class="hud-value" id="hud-zoom">100%</span>
         </div>
         <div class="hud-row">
           <span class="hud-label">Status</span>
@@ -44,8 +59,8 @@
   </div>
 
   <div id="error-dialog" class="error-panel hidden">
-    <div class="error-title">GRAPHICS ERROR</div>
-    <div class="error-message" id="error-text">WebGL is not supported on this device or browser.</div>
+    <div class="error-title" id="error-title">SYSTEM ALERT</div>
+    <div class="error-message" id="error-text">System notice.</div>
   </div>
 
   <script type="module" src="app.js"></script>
