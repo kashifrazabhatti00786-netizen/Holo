@@ -2,727 +2,175 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Particle Sun Orb | AI Hand Tracking</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS // Quantum Neural Hand Interface</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
   
-  <!-- Three.js (3D Library) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  
-  <!-- MediaPipe Hands & Camera Utils -->
+  <!-- Google MediaPipe Dependencies -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-
-  <style>
-    :root {
-      --bg-color: #030206;
-      --accent-gold: #ffaa00;
-      --accent-fire: #ff4500;
-      --hud-bg: rgba(12, 10, 20, 0.65);
-      --hud-border: rgba(255, 170, 0, 0.25);
-      --hud-text: #f0f0f5;
-      --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-      -webkit-user-select: none;
-    }
-
-    body, html {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background-color: var(--bg-color);
-      font-family: var(--font-family);
-      color: var(--hud-text);
-      touch-action: none;
-    }
-
-    /* WebGL Canvas */
-    #webgl-canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-    }
-
-    /* Hidden Camera Video Input */
-    #webcam-video {
-      display: none;
-    }
-
-    /* Sci-Fi Glassmorphism HUD Overlay */
-    .hud-layer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 10;
-      pointer-events: none;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      padding: 20px;
-    }
-
-    .hud-layer * {
-      pointer-events: auto;
-    }
-
-    /* Glassmorphic Box Styling */
-    .glass-card {
-      background: var(--hud-bg);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--hud-border);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
-                  inset 0 0 12px rgba(255, 170, 0, 0.05);
-      padding: 14px 18px;
-    }
-
-    /* Top Bar Header */
-    .hud-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 15px;
-    }
-
-    .brand-title {
-      font-size: 1.1rem;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      background: linear-gradient(135deg, #fff, var(--accent-gold));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .brand-title span {
-      width: 8px;
-      height: 8px;
-      background-color: var(--accent-gold);
-      border-radius: 50%;
-      box-shadow: 0 0 10px var(--accent-gold);
-    }
-
-    /* Status & FPS Panel */
-    .status-panel {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 6px;
-      font-size: 0.85rem;
-      font-family: monospace;
-    }
-
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 0.8rem;
-      padding: 6px 12px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      transition: all 0.3s ease;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #ff3344;
-      box-shadow: 0 0 8px #ff3344;
-      transition: background 0.3s, box-shadow 0.3s;
-    }
-
-    .status-badge.active .status-dot {
-      background: #00ff88;
-      box-shadow: 0 0 8px #00ff88;
-    }
-
-    .fps-counter {
-      color: var(--accent-gold);
-      font-weight: bold;
-    }
-
-    /* Drawer / Quick Gesture Guide */
-    .gesture-drawer {
-      max-width: 300px;
-      transition: transform 0.3s ease, opacity 0.3s ease;
-    }
-
-    .drawer-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      font-size: 0.85rem;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--accent-gold);
-      margin-bottom: 8px;
-    }
-
-    .drawer-content {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      font-size: 0.8rem;
-      color: rgba(255, 255, 255, 0.8);
-      max-height: 250px;
-      overflow-y: auto;
-      transition: max-height 0.3s ease;
-    }
-
-    .drawer-content.collapsed {
-      max-height: 0;
-      overflow: hidden;
-      margin: 0;
-    }
-
-    .guide-item {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      padding: 6px 10px;
-      border-radius: 6px;
-    }
-
-    .guide-icon {
-      font-size: 1.1rem;
-    }
-
-    /* Bottom Info & Error Overlay */
-    .hud-bottom {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-
-    .alert-banner {
-      display: none;
-      background: rgba(255, 50, 50, 0.2);
-      border: 1px solid rgba(255, 50, 50, 0.5);
-      color: #ffaaaa;
-      padding: 10px 20px;
-      border-radius: 30px;
-      font-size: 0.85rem;
-      backdrop-filter: blur(8px);
-      text-align: center;
-    }
-
-    /* Mobile Responsive Tweaks */
-    @media (max-width: 600px) {
-      .hud-layer {
-        padding: 12px;
-      }
-      .gesture-drawer {
-        max-width: 220px;
-      }
-      .brand-title {
-        font-size: 0.95rem;
+  
+  <!-- Three.js ES Module Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
       }
     }
-  </style>
+  </script>
 </head>
 <body>
+  <!-- WebGL Render Canvas Container -->
+  <div id="canvas-container"></div>
 
-  <!-- WebGL Render Canvas -->
-  <canvas id="webgl-canvas"></canvas>
+  <!-- Hidden Video Element for MediaPipe Webcam Capture -->
+  <video id="webcam" playsinline style="display: none;"></video>
 
-  <!-- Video Stream Element for MediaPipe -->
-  <video id="webcam-video" playsinline></video>
+  <!-- Futuristic Visual Overlay Effects -->
+  <div class="scanlines"></div>
+  <div class="vignette"></div>
 
-  <!-- Sci-Fi HUD Layer -->
-  <div class="hud-layer">
-    <!-- Top Row -->
-    <div class="hud-top">
-      <div>
-        <div class="glass-card gesture-drawer">
-          <div class="drawer-header" id="drawer-toggle">
-            <span>❖ Control Guide</span>
-            <span id="toggle-icon">▲</span>
-          </div>
-          <div class="drawer-content" id="drawer-body">
-            <div class="guide-item">
-              <span class="guide-icon">🖐</span>
-              <span><strong>1 Hand (Wrist):</strong> Move Sun Orb in 3D Space</span>
-            </div>
-            <div class="guide-item">
-              <span class="guide-icon">👌</span>
-              <span><strong>Pinch (Thumb+Index):</strong> Scale Sun Orb Size</span>
-            </div>
-            <div class="guide-item">
-              <span class="guide-icon">✊</span>
-              <span><strong>Fist Closure:</strong> Implode Solar Core</span>
-            </div>
-            <div class="guide-item">
-              <span class="guide-icon">🙌</span>
-              <span><strong>2 Hands:</strong> Hand 2 Rotates Orb (Pitch/Yaw)</span>
-            </div>
-          </div>
+  <!-- Holographic Reticle Overlay -->
+  <div id="reticle" class="reticle">
+    <div class="reticle-outer-ring"></div>
+    <div class="reticle-inner-ring"></div>
+    <div class="reticle-center"></div>
+    <div class="reticle-bracket top-left"></div>
+    <div class="reticle-bracket top-right"></div>
+    <div class="reticle-bracket bottom-left"></div>
+    <div class="reticle-bracket bottom-right"></div>
+    <div class="reticle-label" id="reticle-label">TARGET [LOCK]</div>
+  </div>
+
+  <!-- Main Graphical User Interface -->
+  <div id="hud-container">
+    <!-- Top System Header -->
+    <header class="hud-header hud-card">
+      <div class="brand">
+        <div class="core-symbol"></div>
+        <div>
+          <h1>J.A.R.V.I.S. <span class="version">MARK-85</span></h1>
+          <p class="subtitle">HOLOGRAPHIC QUANTUM GESTURE SYSTEM</p>
         </div>
       </div>
-
-      <!-- Tracking Status & FPS -->
-      <div class="glass-card status-panel">
-        <div class="status-badge" id="status-badge">
-          <div class="status-dot"></div>
-          <span id="status-text">Searching for hand...</span>
+      <div class="status-group">
+        <div class="status-indicator">
+          <span class="status-dot pulsing" id="status-dot"></span>
+          <span class="status-text" id="status-text">SYSTEM INITIALIZING...</span>
         </div>
-        <div>FPS: <span class="fps-counter" id="fps-val">00</span></div>
+        <div class="fps-container">
+          <span class="fps-value" id="fps-val">--</span>
+          <span class="fps-label">FPS</span>
+        </div>
       </div>
-    </div>
+    </header>
 
-    <!-- Bottom Row (Alerts / Notifications) -->
-    <div class="hud-bottom">
-      <div class="alert-banner" id="camera-alert">
-        ⚠️ Camera Access Denied/Unavailable. Using Mouse Fallback Controls (Drag to Move/Rotate, Scroll to Zoom).
+    <!-- Left Telemetry Panel -->
+    <aside class="hud-panel panel-left hud-card">
+      <div class="panel-header">
+        <span class="panel-title">SPATIAL TELEMETRY</span>
+        <span class="panel-tag">SYS.LOC.01</span>
       </div>
+      <div class="telemetry-grid">
+        <div class="tele-item">
+          <span class="tele-label">POS X</span>
+          <span class="tele-val" id="val-x">+0.000</span>
+        </div>
+        <div class="tele-item">
+          <span class="tele-label">POS Y</span>
+          <span class="tele-val" id="val-y">+0.000</span>
+        </div>
+        <div class="tele-item">
+          <span class="tele-label">POS Z</span>
+          <span class="tele-val" id="val-z">+0.000</span>
+        </div>
+        <div class="tele-item">
+          <span class="tele-label">TRACK CONF</span>
+          <span class="tele-val highlight" id="val-conf">0%</span>
+        </div>
+      </div>
+      <div class="meter-group">
+        <div class="meter-header">
+          <span>NEURAL SIGNAL STRENGTH</span>
+          <span id="sig-perc">0%</span>
+        </div>
+        <div class="meter-bar-bg">
+          <div class="meter-bar-fill" id="sig-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+      <div class="sub-info">
+        <div>PARTICLES: <span class="accent-text">3,500 CORES</span></div>
+        <div>FIELD DEPTH: <span class="accent-text">DYNAMIC FRUSTUM</span></div>
+      </div>
+    </aside>
+
+    <!-- Right Gesture & Core Status Panel -->
+    <aside class="hud-panel panel-right hud-card">
+      <div class="panel-header">
+        <span class="panel-title">CORE & GESTURE MONITOR</span>
+        <span class="panel-tag">ACT.GST.04</span>
+      </div>
+      <div class="gesture-display">
+        <div class="gesture-sub">ACTIVE GESTURE</div>
+        <div class="gesture-main" id="gesture-name">SEARCHING TARGET...</div>
+      </div>
+      <div class="telemetry-grid">
+        <div class="tele-item">
+          <span class="tele-label">PINCH RATIO</span>
+          <span class="tele-val" id="val-pinch">1.000</span>
+        </div>
+        <div class="tele-item">
+          <span class="tele-label">CORE SCALE</span>
+          <span class="tele-val" id="val-scale">1.000x</span>
+        </div>
+      </div>
+      <div class="meter-group">
+        <div class="meter-header">
+          <span>PLASMA CORE OUTPUT</span>
+          <span id="density-perc">100%</span>
+        </div>
+        <div class="meter-bar-bg">
+          <div class="meter-bar-fill glow-amber" id="density-fill" style="width: 100%;"></div>
+        </div>
+      </div>
+      <div class="implosion-banner" id="implosion-badge">
+        <span class="pulse-icon">⚡</span> IMPLOSION STATE: READY
+      </div>
+    </aside>
+
+    <!-- Bottom Controls & Hints Panel -->
+    <footer class="hud-footer hud-card">
+      <div class="hint-cell">
+        <span class="key-badge">OPEN PALM</span>
+        <span class="key-desc">POSITION ENERGY CORE</span>
+      </div>
+      <div class="hint-divider"></div>
+      <div class="hint-cell">
+        <span class="key-badge">PINCH</span>
+        <span class="key-desc">SCALE PLASMA SPHERE</span>
+      </div>
+      <div class="hint-divider"></div>
+      <div class="hint-cell">
+        <span class="key-badge">FIST</span>
+        <span class="key-desc">TRIGGER IMPLOSION BURST</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Camera Error Overlay / Fallback Modal -->
+  <div id="error-overlay" class="error-modal-overlay hidden">
+    <div class="error-card hud-card">
+      <div class="error-header">⚠️ WEBCAM ACCESS NOTICE</div>
+      <div class="error-body" id="error-msg">
+        Camera permission is disabled or unavailable. Fallback mouse/pointer control has been activated. Move your cursor to position the core, click and drag to simulate pinching, or double-click to simulate a fist implosion.
+      </div>
+      <button class="hud-btn" id="btn-retry">RETRY CAMERA ACCESS</button>
     </div>
   </div>
 
-  <script>
-    /* =========================================================================
-       1. GLOBAL CONFIG & STATE MANAGEMENT
-       ========================================================================= */
-    const STATE = {
-      // Smoothed 3D Parameters for Scene Lerping
-      targetPos: new THREE.Vector3(0, 0, 0),
-      currentPos: new THREE.Vector3(0, 0, 0),
-      
-      targetScale: 1.0,
-      currentScale: 1.0,
-      
-      targetImplode: 0.0,
-      currentImplode: 0.0,
-      
-      targetRotX: 0.0,
-      targetRotY: 0.0,
-      currentRotX: 0.0,
-      currentRotY: 0.0,
-
-      // Tracking Metrics
-      handsDetected: 0,
-      hasCameraAccess: false,
-      
-      // Mouse Fallback
-      isMouseDown: false,
-      prevMouseX: 0,
-      prevMouseY: 0
-    };
-
-    /* =========================================================================
-       2. THREE.JS SCENE, CAMERA & CUSTOM SHADER PARTICLES
-       ========================================================================= */
-    const canvas = document.getElementById('webgl-canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-
-    const scene = new THREE.Scene();
-    
-    // Camera Setup
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 12;
-
-    // Custom GLSL Shaders for Dynamic Sun Orb
-    const vertexShader = `
-      uniform float uTime;
-      uniform float uImplode;
-      uniform float uScale;
-
-      attribute float aSize;
-      attribute vec3 aRandom;
-
-      varying float vDistance;
-      varying float vNoise;
-      varying vec3 vPosition;
-
-      // Trigonometric pseudo-noise generator
-      float getTurbulence(vec3 p) {
-        return sin(p.x * 2.5 + uTime * 2.0) * 
-               cos(p.y * 2.5 + uTime * 1.8) * 
-               sin(p.z * 2.5 + uTime * 2.2);
-      }
-
-      void main() {
-        vPosition = position;
-        
-        // Radial normal direction
-        vec3 norm = normalize(position);
-        float noise = getTurbulence(position * 0.7 + aRandom);
-        
-        // Solar prominence pulse factor
-        float flare = sin(uTime * 4.0 + aRandom.x * 12.0) * 0.2;
-        
-        // Implosion math: collapse position toward origin when fist is closed
-        vec3 displacedPos = position * (1.0 + noise * 0.25 + flare);
-        vec3 implosivePos = mix(displacedPos, position * 0.1, uImplode);
-        
-        // Apply hand scale transformation
-        vec4 mvPosition = modelViewMatrix * vec4(implosivePos * uScale, 1.0);
-        
-        gl_Position = projectionMatrix * mvPosition;
-        
-        // Distance attenuation size sizing
-        gl_PointSize = (aSize * (1.0 + noise * 0.6)) * (350.0 / -mvPosition.z);
-        
-        vDistance = length(implosivePos);
-        vNoise = noise;
-      }
-    `;
-
-    const fragmentShader = `
-      uniform vec3 uColorCore;
-      uniform vec3 uColorCorona;
-      uniform float uImplode;
-      uniform float uTime;
-
-      varying float vDistance;
-      varying float vNoise;
-      varying vec3 vPosition;
-
-      void main() {
-        // Render soft spherical particle sprites
-        vec2 centerDist = gl_PointCoord - vec2(0.5);
-        float distSq = dot(centerDist, centerDist);
-        if (distSq > 0.25) discard; // Hard circular cutout
-
-        // Soft radial alpha glow falloff
-        float alpha = pow(1.0 - (distSq * 4.0), 1.8);
-
-        // Core to Corona color blending based on radial distance
-        float mixFactor = smoothstep(0.4, 2.8, vDistance + vNoise * 0.4);
-        vec3 finalColor = mix(uColorCore, uColorCorona, mixFactor);
-
-        // Add dynamic core flare highlight
-        finalColor += vec3(0.4, 0.25, 0.0) * (1.0 - mixFactor);
-
-        // Implosion compression glow effect (turns electric blue/violet at maximum collapse)
-        vec3 implosionColor = vec3(0.4, 0.7, 1.0) * uImplode * 1.5;
-        finalColor = mix(finalColor, finalColor + implosionColor, uImplode);
-
-        gl_FragColor = vec4(finalColor, alpha * 0.85);
-      }
-    `;
-
-    // Particle Sphere Geometry Construction
-    const PARTICLE_COUNT = 22000;
-    const geometry = new THREE.BufferGeometry();
-    
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const sizes = new Float32Array(PARTICLE_COUNT);
-    const randoms = new Float32Array(PARTICLE_COUNT * 3);
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      // Golden Spiral Spherical Distribution + Layered Volume
-      const u = Math.random();
-      const v = Math.random();
-      const theta = u * 2.0 * Math.PI;
-      const phi = Math.acos(2.0 * v - 1.0);
-      
-      // Radius variation between core (1.2) and outer corona flares (2.6)
-      const radius = 1.2 + Math.pow(Math.random(), 2.0) * 1.4;
-
-      const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.sin(phi) * Math.sin(theta);
-      const z = radius * Math.cos(phi);
-
-      positions[i * 3 + 0] = x;
-      positions[i * 3 + 1] = y;
-      positions[i * 3 + 2] = z;
-
-      sizes[i] = 0.08 + Math.random() * 0.16;
-
-      randoms[i * 3 + 0] = Math.random() * 10.0;
-      randoms[i * 3 + 1] = Math.random() * 10.0;
-      randoms[i * 3 + 2] = Math.random() * 10.0;
-    }
-
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-    geometry.setAttribute('aRandom', new THREE.BufferAttribute(randoms, 3));
-
-    // Shader Material Configuration
-    const particleMaterial = new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: {
-        uTime: { value: 0.0 },
-        uImplode: { value: 0.0 },
-        uScale: { value: 1.0 },
-        uColorCore: { value: new THREE.Color(0xffaa00) },  // Warm Gold/Orange
-        uColorCorona: { value: new THREE.Color(0xff2200) } // Deep Fire Red
-      },
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
-
-    const sunMesh = new THREE.Points(geometry, particleMaterial);
-    scene.add(sunMesh);
-
-    // Ambient Outer Background Glow Stars
-    const starGeometry = new THREE.BufferGeometry();
-    const STAR_COUNT = 1500;
-    const starPos = new Float32Array(STAR_COUNT * 3);
-
-    for (let i = 0; i < STAR_COUNT * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 80;
-      starPos[i + 1] = (Math.random() - 0.5) * 80;
-      starPos[i + 2] = (Math.random() - 0.5) * 80;
-    }
-
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-    const starMaterial = new THREE.PointsMaterial({
-      size: 0.06,
-      color: 0x88bbff,
-      transparent: true,
-      opacity: 0.4
-    });
-    const starField = new THREE.Points(starGeometry, starMaterial);
-    scene.add(starField);
-
-    /* =========================================================================
-       3. MEDIAPIPE HAND TRACKING & GESTURE CALCULATIONS
-       ========================================================================= */
-    const videoElement = document.getElementById('webcam-video');
-    const statusText = document.getElementById('status-text');
-    const statusBadge = document.getElementById('status-badge');
-    const cameraAlert = document.getElementById('camera-alert');
-
-    // Distance utility helper
-    function get3DDistance(p1, p2) {
-      const dx = p1.x - p2.x;
-      const dy = p1.y - p2.y;
-      const dz = (p1.z || 0) - (p2.z || 0);
-      return Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-
-    function onResults(results) {
-      const numHands = results.multiHandLandmarks ? results.multiHandLandmarks.length : 0;
-      STATE.handsDetected = numHands;
-
-      if (numHands === 0) {
-        statusText.innerText = "Searching for hand...";
-        statusBadge.classList.remove('active');
-        
-        // Smoothly decay/reset target controls to neutral state when hands leave view
-        STATE.targetScale = 1.0;
-        STATE.targetImplode = 0.0;
-        return;
-      }
-
-      statusBadge.classList.add('active');
-      statusText.innerText = numHands === 1 ? "Hand Detected [1]" : "Hand Detected [2]";
-
-      // --- HAND 1 CONTROLS: Translation (Wrist), Pinch (Scale), Fist (Implosion) ---
-      const hand1 = results.multiHandLandmarks[0];
-      const wrist = hand1[0];
-
-      // Convert Normalized Camera (0..1) Coordinates to 3D Space Frustum
-      // Mirror X so movement aligns intuitively with webcam preview
-      const targetX = (1.0 - wrist.x - 0.5) * 14.0;
-      const targetY = (0.5 - wrist.y) * 9.0;
-      STATE.targetPos.set(targetX, targetY, 0);
-
-      // Pinch Gesture: Landmark #4 (Thumb Tip) & Landmark #8 (Index Tip)
-      const thumbTip = hand1[4];
-      const indexTip = hand1[8];
-      const pinchDist = get3DDistance(thumbTip, indexTip);
-      
-      // Map pinch distance (approx 0.03 to 0.28) to scale multiplier (0.4 to 2.4)
-      const mappedScale = THREE.MathUtils.mapLinear(pinchDist, 0.03, 0.25, 0.4, 2.4);
-      STATE.targetScale = THREE.MathUtils.clamp(mappedScale, 0.3, 3.0);
-
-      // Fist Closure Gesture: Average distance of all 5 fingertips to Wrist (#0)
-      const fingertips = [4, 8, 12, 16, 20];
-      let totalFingerDist = 0;
-      fingertips.forEach(idx => {
-        totalFingerDist += get3DDistance(hand1[idx], wrist);
-      });
-      const avgFingerDist = totalFingerDist / 5.0;
-
-      // Threshold: Normal open hand avg dist ~0.4 to 0.65; Closed fist ~0.15 to 0.24
-      if (avgFingerDist < 0.26) {
-        const implodeFactor = THREE.MathUtils.mapLinear(avgFingerDist, 0.26, 0.14, 0.0, 1.0);
-        STATE.targetImplode = THREE.MathUtils.clamp(implodeFactor, 0.0, 1.0);
-      } else {
-        STATE.targetImplode = 0.0;
-      }
-
-      // --- HAND 2 CONTROLS (If Present): Pitch & Yaw Sphere Rotation ---
-      if (numHands >= 2) {
-        const hand2 = results.multiHandLandmarks[1];
-        const wrist2 = hand2[0];
-        const middleBase2 = hand2[9]; // Middle finger MCP joint
-
-        // Compute orientation delta angles for rotation
-        const dx = middleBase2.x - wrist2.x;
-        const dy = middleBase2.y - wrist2.y;
-        
-        STATE.targetRotY += dx * 2.0;
-        STATE.targetRotX += dy * 2.0;
-      }
-    }
-
-    // Initialize MediaPipe Hands Instance
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-    });
-
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
-    });
-
-    hands.onResults(onResults);
-
-    // Initialize Camera Stream
-    const cameraUtils = new Camera(videoElement, {
-      onFrame: async () => {
-        await hands.send({ image: videoElement });
-      },
-      width: 640,
-      height: 480,
-      facingMode: 'user'
-    });
-
-    cameraUtils.start().catch(err => {
-      console.warn("Webcam access restricted/failed:", err);
-      STATE.hasCameraAccess = false;
-      cameraAlert.style.display = 'block';
-    });
-
-    /* =========================================================================
-       4. MOUSE / TOUCH FALLBACK CONTROLS
-       ========================================================================= */
-    window.addEventListener('pointerdown', (e) => {
-      STATE.isMouseDown = true;
-      STATE.prevMouseX = e.clientX;
-      STATE.prevMouseY = e.clientY;
-    });
-
-    window.addEventListener('pointermove', (e) => {
-      if (STATE.handsDetected > 0) return; // Prioritize hand tracking if present
-
-      if (STATE.isMouseDown) {
-        const deltaX = (e.clientX - STATE.prevMouseX) * 0.005;
-        const deltaY = (e.clientY - STATE.prevMouseY) * 0.005;
-
-        STATE.targetRotY += deltaX * 2.0;
-        STATE.targetRotX += deltaY * 2.0;
-
-        STATE.prevMouseX = e.clientX;
-        STATE.prevMouseY = e.clientY;
-      } else {
-        // Move sphere slightly following pointer position
-        const mouseX = (e.clientX / window.innerWidth - 0.5) * 10.0;
-        const mouseY = -(e.clientY / window.innerHeight - 0.5) * 6.0;
-        STATE.targetPos.set(mouseX, mouseY, 0);
-      }
-    });
-
-    window.addEventListener('pointerup', () => STATE.isMouseDown = false);
-
-    window.addEventListener('wheel', (e) => {
-      if (STATE.handsDetected > 0) return;
-      STATE.targetScale += e.deltaY * -0.0015;
-      STATE.targetScale = THREE.MathUtils.clamp(STATE.targetScale, 0.3, 3.5);
-    });
-
-    /* =========================================================================
-       5. UI CONTROLS & EVENT LISTENERS
-       ========================================================================= */
-    const drawerToggle = document.getElementById('drawer-toggle');
-    const drawerBody = document.getElementById('drawer-body');
-    const toggleIcon = document.getElementById('toggle-icon');
-
-    drawerToggle.addEventListener('click', () => {
-      const isCollapsed = drawerBody.classList.toggle('collapsed');
-      toggleIcon.innerText = isCollapsed ? '▼' : '▲';
-    });
-
-    // Window Resize Handler
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    });
-
-    /* =========================================================================
-       6. MAIN RENDER & ANIMATION LOOP
-       ========================================================================= */
-    const clock = new THREE.Clock();
-    let frameCount = 0;
-    let lastTime = performance.now();
-    const fpsVal = document.getElementById('fps-val');
-
-    function animate() {
-      requestAnimationFrame(animate);
-
-      const elapsedTime = clock.getElapsedTime();
-
-      // --- Linear Interpolation (Lerp) for Smooth Motion ---
-      const lerpFactor = 0.08;
-
-      STATE.currentPos.lerp(STATE.targetPos, lerpFactor);
-      sunMesh.position.copy(STATE.currentPos);
-
-      STATE.currentScale += (STATE.targetScale - STATE.currentScale) * lerpFactor;
-      particleMaterial.uniforms.uScale.value = STATE.currentScale;
-
-      STATE.currentImplode += (STATE.targetImplode - STATE.currentImplode) * lerpFactor;
-      particleMaterial.uniforms.uImplode.value = STATE.currentImplode;
-
-      STATE.currentRotX += (STATE.targetRotX - STATE.currentRotX) * lerpFactor;
-      STATE.currentRotY += (STATE.targetRotY - STATE.currentRotY) * lerpFactor;
-
-      // Apply base dynamic rotation + hand rotation overrides
-      sunMesh.rotation.x = STATE.currentRotX + elapsedTime * 0.1;
-      sunMesh.rotation.y = STATE.currentRotY + elapsedTime * 0.15;
-
-      // Background stars slow drift
-      starField.rotation.y = elapsedTime * 0.02;
-
-      // Update shader uniforms
-      particleMaterial.uniforms.uTime.value = elapsedTime;
-
-      // FPS Monitoring
-      frameCount++;
-      const now = performance.now();
-      if (now - lastTime >= 500) {
-        const fps = Math.round((frameCount * 1000) / (now - lastTime));
-        fpsVal.innerText = fps < 10 ? `0${fps}` : fps;
-        frameCount = 0;
-        lastTime = now;
-      }
-
-      renderer.render(scene, camera);
-    }
-
-    // Start Animation Loop
-    animate();
-  </script>
+  <script type="module" src="app.js"></script>
 </body>
-</html>
+  </html>
