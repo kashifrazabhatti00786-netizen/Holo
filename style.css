@@ -40,14 +40,14 @@ html, body {
 
 .hud-panel {
   pointer-events: auto;
-  background: rgba(10, 14, 23, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(10, 14, 23, 0.68);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   border: 1px solid rgba(255, 170, 0, 0.25);
   border-radius: 12px;
   padding: 16px 20px;
-  min-width: 280px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45),
+  min-width: 290px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5),
               inset 0 0 12px rgba(255, 150, 0, 0.08);
   transition: all 0.3s ease;
 }
@@ -132,6 +132,11 @@ html, body {
 .mode-active {
   color: #33aaff;
   text-shadow: 0 0 8px rgba(51, 170, 255, 0.4);
+}
+
+.level-active {
+  color: #e066ff;
+  text-shadow: 0 0 8px rgba(224, 102, 255, 0.4);
 }
 
 .error-panel {
