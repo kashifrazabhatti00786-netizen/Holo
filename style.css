@@ -26,6 +26,10 @@ html, body {
   display: block;
 }
 
+#webcam {
+  display: none;
+}
+
 #hud-container {
   position: fixed;
   top: 24px;
@@ -36,13 +40,13 @@ html, body {
 
 .hud-panel {
   pointer-events: auto;
-  background: rgba(10, 14, 23, 0.55);
+  background: rgba(10, 14, 23, 0.6);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 170, 0, 0.25);
   border-radius: 12px;
   padding: 18px 22px;
-  min-width: 260px;
+  min-width: 270px;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45),
               inset 0 0 12px rgba(255, 150, 0, 0.08);
   transition: all 0.3s ease;
@@ -75,9 +79,19 @@ html, body {
   animation: pulse 2s infinite ease-in-out;
 }
 
+.status-pulse.tracking-lost {
+  background-color: #ff4444;
+  box-shadow: 0 0 10px #ff4444;
+}
+
+.status-pulse.tracking-ok {
+  background-color: #00ffaa;
+  box-shadow: 0 0 10px #00ffaa;
+}
+
 @keyframes pulse {
   0% { transform: scale(0.95); opacity: 0.7; }
-  50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 16px #ffaa00; }
+  50% { transform: scale(1.25); opacity: 1; }
   100% { transform: scale(0.95); opacity: 0.7; }
 }
 
@@ -110,22 +124,27 @@ html, body {
   text-shadow: 0 0 8px rgba(0, 255, 170, 0.4);
 }
 
+.gesture-active {
+  color: #ffaa00;
+  text-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
+}
+
 .error-panel {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 100;
-  background: rgba(25, 10, 12, 0.85);
+  background: rgba(25, 10, 12, 0.88);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 50, 50, 0.4);
   border-radius: 12px;
   padding: 24px;
-  max-width: 400px;
+  max-width: 420px;
   width: 90%;
   text-align: center;
-  box-shadow: 0 12px 40px rgba(255, 0, 0, 0.2);
+  box-shadow: 0 12px 40px rgba(255, 0, 0, 0.25);
 }
 
 .error-title {
